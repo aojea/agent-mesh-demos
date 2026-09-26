@@ -20,13 +20,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const SAM_ROOT = process.env.SAM_REPO_ROOT || path.resolve(ROOT, "../../../../../src/sam");
-const PLAYWRIGHT_ENTRY = pathToFileURL(
-  path.join(SAM_ROOT, "tests", "ui", "node_modules", "playwright", "index.mjs"),
-).href;
-const { chromium } = await import(PLAYWRIGHT_ENTRY);
+const SAM_ROOT = process.env.SAM_REPO_ROOT || "";
 
-const DEMO_PORT = 4415;
+let chromium;
+try {
+  ({ chromium } = await import("playwright"));
+} catch {
+  const fallback = pathToFileURL(
+    path.join(SAM_ROOT, "tests", "ui", "node_modules", "playwright", "index.mjs"),
+  ).href;
+  ({ chromium } = await import(fallback));
+}
+
+const DEMO_PORT = Number(process.env.DEMO_PORT || 4415);
 const DEMO_URL = `http://127.0.0.1:${DEMO_PORT}`;
 const OUT_DIR = process.env.VIDEOS_OUT_DIR || path.join(ROOT, "videos");
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -83,13 +89,19 @@ async function recordScenario(browser, name, fn) {
   console.log(`Recorded ${mp4Path}`);
 }
 
+const childEnv = {
+  ...process.env,
+  PORT: String(DEMO_PORT),
+};
+if (SAM_ROOT && !childEnv.SAM_ONE_BIN) {
+  childEnv.SAM_ONE_BIN = path.join(SAM_ROOT, "bin", "sam-one");
+}
+if (SAM_ROOT && !childEnv.SAM_SDK_DIST) {
+  childEnv.SAM_SDK_DIST = path.join(SAM_ROOT, "sdk", "js", "dist", "index.js");
+}
+
 const serverProc = spawn("node", [path.join(ROOT, "server.mjs")], {
-  env: {
-    ...process.env,
-    PORT: String(DEMO_PORT),
-    SAM_ONE_BIN: path.join(SAM_ROOT, "bin", "sam-one"),
-    SAM_SDK_DIST: path.join(SAM_ROOT, "sdk", "js", "dist", "index.js"),
-  },
+  env: childEnv,
   stdio: ["ignore", "pipe", "pipe"],
 });
 

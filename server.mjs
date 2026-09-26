@@ -21,13 +21,15 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SDK_PATH = path.resolve(__dirname, "../../../../../src/sam/sdk/js/dist/index.js");
-const SDK_URL = pathToFileURL(process.env.SAM_SDK_DIST || DEFAULT_SDK_PATH).href;
-const SAM_ONE_BIN = process.env.SAM_ONE_BIN || path.resolve(__dirname, "../../../../../src/sam/bin/sam-one");
+const localSamBin = path.join(__dirname, ".sam-bin", "sam-one");
+const SAM_ONE_BIN =
+  process.env.SAM_ONE_BIN || (fs.existsSync(localSamBin) ? localSamBin : "sam-one");
 const PORT = Number(process.env.PORT || 4400);
 const ADMIN_TOKEN = process.env.SAM_ADMIN_TOKEN || "demo-admin-secret-token";
 
-const sdk = await import(SDK_URL);
+const sdk = process.env.SAM_SDK_DIST
+  ? await import(pathToFileURL(path.resolve(process.env.SAM_SDK_DIST)).href)
+  : await import("@sam-mesh/sdk");
 
 function getFreePort() {
   return new Promise((resolve, reject) => {

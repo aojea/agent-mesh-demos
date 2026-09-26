@@ -5,13 +5,14 @@
   "type": "module",
   "description": "Interactive browser & multi-agent demos powered by @sam-mesh/sdk and sam-one",
   "scripts": {
+    "setup": "./scripts/setup-sam.sh",
     "start": "node server.mjs",
     "record": "node scripts/record-videos.mjs"
   },
   "dependencies": {
-    "@sam-mesh/sdk": "file:../sam/sdk/js"
+    "@sam-mesh/sdk": "next"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0"
+    "playwright": "^1.50.0"
   }
 }

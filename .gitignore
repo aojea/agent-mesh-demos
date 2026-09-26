@@ -1,4 +1,5 @@
 node_modules/
+.sam-bin/
 videos/
 *.log
 *.metadata.json

@@ -1,0 +1,41 @@
+name: Verify & Record Demos
+
+on:
+  workflow_dispatch:
+    inputs:
+      sam_version:
+        description: "SAM release tag to run against (e.g. v0.1.0-rc.6 or latest)"
+        required: false
+        default: "latest"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies and SAM release (${{ inputs.sam_version || 'latest' }})
+        env:
+          SAM_VERSION: ${{ inputs.sam_version || 'latest' }}
+        run: |
+          npm install --no-audit --no-fund
+          chmod +x ./scripts/setup-sam.sh
+          ./scripts/setup-sam.sh
+          npx playwright install --with-deps chromium
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Record all 4 demo videos
+        run: npm run record
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sam-demo-videos-${{ inputs.sam_version || 'latest' }}
+          path: videos/*.mp4

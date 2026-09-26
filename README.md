@@ -10,16 +10,16 @@ Every demo runs real `@sam-mesh/sdk` `MeshSession` agents connected over WebSock
 Two `@sam-mesh/sdk` agents (**Agent Alpha — Planner** and **Agent Beta — Security Auditor**) enroll with `sam-one`, dial its single-port WebSocket relay, and exchange A2A requests over `/libp2p-http`.
 - Inspect live Biscuit facts (`node(...)`, `role("sam:role:node")`) and `X-SAM-Verified-Peer-ID` headers.
 - Mutate the mesh's Datalog policy live (`POST /policies`) and watch unauthorized A2A calls get rejected at the stream gate before reaching the agent handler.
-- Trigger a live peer revocation (`POST /users/nodes/revoke`) and watch `sam-one` broadcast a signed `PEER_BAN` over GossipSub (`sam/events/1.0.0`), terminating the peer's streams in milliseconds.
+- Trigger a live peer revocation (`POST /user/revoke`) and watch `sam-one` broadcast a signed `PEER_BAN` over GossipSub (`sam/events/1.0.0`), terminating the peer's streams in milliseconds.
 
 ### 2. Polyglot "Follow the Packet" Hop Tracer (`02-polyglot-hop-tracer`)
-Traces a single task cascading across multiple mesh members and protocols (`a2a://researcher` $\to$ `mcp://git-analyzer`):
+Traces a single task cascading across multiple mesh members (`a2a://researcher` $\to$ `a2a://git-analyzer`):
 - **Hop 1 (`@sam-mesh/sdk` Coordinator)** dials `a2a://researcher` over `/ws` + `/p2p-circuit`.
-- **Hop 2 (Researcher Agent)** verifies the Coordinator's Biscuit token and invokes the `summarize_diff` tool on `mcp://git-analyzer`.
-- **Hop 3 (MCP Tool Provider)** verifies the Researcher's Biscuit token, runs the analysis, and returns the result up the chain with per-hop latency and cryptographic peer verification.
+- **Hop 2 (Researcher Agent)** verifies the Coordinator's Biscuit token and invokes `a2a://git-analyzer`.
+- **Hop 3 (Git Diff Analyzer)** verifies the Researcher's Biscuit token, runs the analysis, and returns the result up the chain with per-hop latency and cryptographic peer verification.
 
 ### 3. "Scan-to-Join" Multi-Agent Room (`03-qr-multi-agent-room`)
-Demonstrates `sam-one`'s bounded-budget device enrollment tokens (`sam://enroll?server=...&token=sam_dev_...`):
+Demonstrates `sam-one`'s bounded-budget device enrollment tokens (`sam://enroll?server=...&token=...`):
 - Mints a shared room enrollment token with a strict usage budget (`max_usages: 4`).
 - Four specialist agents (`Incident Commander`, `Log Triage`, `Patch Synthesizer`, `Mobile Approver`) claim a slot, generate Ed25519 identities, join the mesh room, and coordinate an incident mitigation over A2A.
 - When a 5th uninvited agent attempts to reuse the room token, `sam-one` rejects the enrollment (`Bootstrap token max usages exceeded`).
@@ -29,24 +29,37 @@ An Orchestrator Agent fans out a security & architecture review concurrently acr
 
 ---
 
-## Quick Start
+## Quick Start (Parameterized by Tagged SAM Version)
 
-### Prerequisites
-- `sam-one` binary in `PATH` (or `SAM_ONE_BIN=/path/to/sam-one`)
-- Node.js 22+
-
-### Run the Demo Suite Interactively
+### 1. Install a Tagged Release of `sam-one` and `@sam-mesh/sdk`
 
 ```bash
-SAM_ONE_BIN=/path/to/sam/bin/sam-one npm start
+# Defaults to the latest release of google/sam, or pass SAM_VERSION=<tag>:
+SAM_VERSION=v0.1.0-rc.6 npm run setup
+```
+
+### 2. Run the Demo Suite Interactively
+
+```bash
+npm start
 ```
 
 Open `http://127.0.0.1:4400` in your browser to switch between all four live demos.
 
-### Re-record the `.mp4` Showcase Videos
+### 3. Re-record the `.mp4` Showcase Videos
 
 ```bash
-SAM_ONE_BIN=/path/to/sam/bin/sam-one npm run record
+npm run record
 ```
 
-This boots `sam-one` and the demo server, drives all four demos in headless Chromium (`1280x720`) via Playwright video capture, and transcodes the recordings with `ffmpeg` into high-DPI H.264 `.mp4` files under `videos/`.
+This boots `sam-one` and the demo server, drives all four demos in headless Chromium (`1280x720`) via Playwright video capture, and transcodes the recordings with `ffmpeg` into H.264 `.mp4` files under `videos/`.
+
+### Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `SAM_VERSION` | `latest` | Tagged SAM release installed by `npm run setup` (e.g. `v0.1.0-rc.6`). |
+| `SAM_REPO` | `google/sam` | GitHub repository from which `setup-sam.sh` downloads `sam-one`. |
+| `SAM_ONE_BIN` | `./.sam-bin/sam-one` | Path to the `sam-one` binary used by `server.mjs`. |
+| `SAM_SDK_DIST` | `@sam-mesh/sdk` | Optional path to a local `sdk/js/dist/index.js` build when testing unreleased SDK changes. |
+| `VIDEOS_OUT_DIR` | `./videos` | Output directory for `npm run record`. |
