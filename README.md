@@ -1,4 +1,4 @@
-# Sovereign Agent Mesh (`@sam-mesh/sdk` + `sam-one`) Interactive Demos
+# Agent Mesh (`@sam-mesh/sdk` + `sam-one`) Interactive Demos
 
 Interactive browser and multi-agent mesh demos powered by [`@sam-mesh/sdk`](https://www.npmjs.com/package/@sam-mesh/sdk) and the single-binary [`sam-one`](https://github.com/google/sam) appliance.
 
