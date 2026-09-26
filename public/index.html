@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SAM — Interactive Agent Mesh Demos (@sam-mesh/sdk + sam-one)</title>
+  <style>
+    :root {
+      --bg: #080c14;
+      --panel: #101726;
+      --panel-alt: #151f33;
+      --border: #24324f;
+      --text: #e6edf7;
+      --muted: #8ea0c0;
+      --cyan: #38bdf8;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --purple: #a78bfa;
+      --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 15% 0%, #13203b 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 22px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(16, 23, 38, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      color: #06101e;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      letter-spacing: 0.04em;
+    }
+    .brand h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 700;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+    }
+    .tab-btn {
+      background: var(--panel-alt);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 7px 13px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .tab-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--cyan);
+      border-color: var(--cyan);
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.22);
+    }
+    .mesh-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--emerald);
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      padding: 5px 11px;
+      border-radius: 999px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    main {
+      padding: 18px 22px;
+      max-width: 1260px;
+      margin: 0 auto;
+    }
+    .demo-panel { display: none; }
+    .demo-panel.active { display: block; }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1.25fr 1fr;
+      gap: 16px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 15px;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-weight: 600;
+    }
+    .badge-cyan { background: rgba(56, 189, 248, 0.14); color: var(--cyan); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .badge-emerald { background: rgba(52, 211, 153, 0.14); color: var(--emerald); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .badge-amber { background: rgba(251, 191, 36, 0.14); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35); }
+    .badge-rose { background: rgba(251, 113, 133, 0.16); color: var(--rose); border: 1px solid rgba(251, 113, 133, 0.4); }
+    .badge-purple { background: rgba(167, 139, 250, 0.16); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.4); }
+    .kv-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+    .peer-box {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 9px;
+      border-radius: 6px;
+      color: var(--cyan);
+      word-break: break-all;
+      margin-bottom: 10px;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-primary {
+      background: var(--cyan);
+      color: #04101d;
+    }
+    .btn-amber {
+      background: rgba(251, 191, 36, 0.18);
+      color: var(--amber);
+      border-color: rgba(251, 191, 36, 0.45);
+    }
+    .btn-emerald {
+      background: rgba(52, 211, 153, 0.18);
+      color: var(--emerald);
+      border-color: rgba(52, 211, 153, 0.45);
+    }
+    .btn-rose {
+      background: rgba(251, 113, 133, 0.18);
+      color: var(--rose);
+      border-color: rgba(251, 113, 133, 0.45);
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    pre.code-box {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      margin: 6px 0 10px;
+      color: #c3d4f2;
+      max-height: 125px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 295px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+    .event-item {
+      background: var(--panel-alt);
+      border-left: 3px solid var(--cyan);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .event-item.ok { border-left-color: var(--emerald); }
+    .event-item.denied { border-left-color: var(--amber); background: rgba(251, 191, 36, 0.08); }
+    .event-item.banned { border-left-color: var(--rose); background: rgba(251, 113, 133, 0.09); }
+    .event-meta {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .hop-pipeline {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0 16px;
+    }
+    .hop-node {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      transition: all 0.25s ease;
+    }
+    .hop-node.lit {
+      border-color: var(--emerald);
+      box-shadow: 0 0 18px rgba(52, 211, 153, 0.25);
+    }
+    .hop-arrow {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--cyan);
+      text-align: center;
+      padding: 0 6px;
+    }
+    .qr-box {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .progress-track {
+      width: 100%;
+      height: 9px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 6px 0 12px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--emerald));
+      transition: width 0.25s ease;
+    }
+    .progress-fill.full {
+      background: linear-gradient(90deg, var(--amber), var(--rose));
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="brand-badge">SAM MESH</span>
+      <h1>Interactive Agent Mesh Demos &mdash; <code>@sam-mesh/sdk</code> + <code>sam-one</code></h1>
+    </div>
+    <nav class="tabs">
+      <button id="tab-demo1" class="tab-btn active" onclick="switchTab('demo1')">1. Zero-Trust Two-Agent Playground</button>
+      <button id="tab-demo2" class="tab-btn" onclick="switchTab('demo2')">2. Polyglot Hop Tracer</button>
+      <button id="tab-demo3" class="tab-btn" onclick="switchTab('demo3')">3. QR Multi-Agent Room</button>
+      <button id="tab-demo4" class="tab-btn" onclick="switchTab('demo4')">4. Federated Specialist Swarm</button>
+    </nav>
+    <div class="mesh-pill">
+      <span class="dot"></span>
+      <span id="header-status">sam-one WebSocket Relay Active</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ================================================================== -->
+    <!-- DEMO 1: Zero-Trust Two-Agent Playground                            -->
+    <!-- ================================================================== -->
+    <section id="panel-demo1" class="demo-panel active">
+      <div class="grid-3">
+        <!-- Left: Agent Alpha -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Agent Alpha (Planner)</h2>
+            <span class="badge badge-cyan">a2a://planner</span>
+          </div>
+          <div class="kv-label">Ed25519 Peer ID (Verified by Biscuit)</div>
+          <div id="d1-alpha-peer" class="peer-box">Loading...</div>
+          <div class="kv-label">Reserved Circuit Relay Slot</div>
+          <div id="d1-alpha-relay" class="peer-box" style="color: var(--muted); font-size: 10.5px;">Loading...</div>
+
+          <div class="kv-label" style="margin-top: 10px;">Send A2A Request to Agent Beta</div>
+          <input id="d1-input" type="text" value="Verify release v0.2.0 artifact signatures" />
+          <div class="btn-row">
+            <button id="d1-send-alpha" class="btn btn-primary" onclick="demo1Send('alpha')">Send A2A Task &rarr; Beta</button>
+            <button id="d1-send-beta" class="btn btn-emerald" onclick="demo1Send('beta')">Reply Beta &rarr; Alpha</button>
+          </div>
+        </div>
+
+        <!-- Center: sam-one Mesh & Datalog Policy Engine -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">sam-one Single-Port Relay &amp; Datalog Policy</h2>
+            <span id="d1-policy-badge" class="badge badge-emerald">POLICY: ALLOW *</span>
+          </div>
+          <div class="kv-label">Embedded WebSocket Router Multiaddr</div>
+          <div id="d1-router-addr" class="peer-box" style="color: var(--emerald);">Loading...</div>
+
+          <div class="kv-label">Active Biscuit Datalog Rules (<code>session.policyRules</code>)</div>
+          <pre id="d1-datalog-rules" class="code-box">Loading...</pre>
+
+          <div class="kv-label">Live Zero-Trust Governance Controls</div>
+          <div class="btn-row">
+            <button id="d1-btn-deny" class="btn btn-amber" onclick="demo1SetPolicy('deny')">Restrict Datalog (Deny A2A)</button>
+            <button id="d1-btn-allow" class="btn btn-emerald" onclick="demo1SetPolicy('allow')">Restore Datalog (Allow A2A)</button>
+            <button id="d1-btn-ban" class="btn btn-rose" onclick="demo1BanBeta()">Revoke Beta (GossipSub Ban)</button>
+          </div>
+
+          <div class="kv-label" style="margin-top: 12px;">Live /libp2p-http Stream &amp; Authorization Trace</div>
+          <div id="d1-stream-log" class="event-list"></div>
+        </div>
+
+        <!-- Right: Agent Beta -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Agent Beta (Auditor)</h2>
+            <span id="d1-beta-status" class="badge badge-emerald">ADMITTED</span>
+          </div>
+          <div class="kv-label">Ed25519 Peer ID (Verified by Biscuit)</div>
+          <div id="d1-beta-peer" class="peer-box">Loading...</div>
+          <div class="kv-label">Reserved Circuit Relay Slot</div>
+          <div id="d1-beta-relay" class="peer-box" style="color: var(--muted); font-size: 10.5px;">Loading...</div>
+
+          <div class="kv-label" style="margin-top: 10px;">Verified Incoming Requests (Biscuit Stripped)</div>
+          <div id="d1-beta-inbox" class="event-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 2: Polyglot "Follow the Packet" Hop Tracer                    -->
+    <!-- ================================================================== -->
+    <section id="panel-demo2" class="demo-panel">
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-header">
+          <h2 class="card-title">Multi-Hop Service Chain Across the Mesh (Coordinator &rarr; Researcher &rarr; Git Analyzer)</h2>
+          <span id="d2-total-badge" class="badge badge-cyan">Ready to Trace</span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px;">
+          <input id="d2-commit" type="text" value="commit 9f4c21a: add WebSocket transport to @sam-mesh/sdk" style="margin-bottom: 0; flex: 1;" />
+          <button id="d2-run-trace" class="btn btn-primary" onclick="demo2RunTrace()">Trace Multi-Hop Request</button>
+        </div>
+
+        <div class="hop-pipeline">
+          <div id="d2-node-1" class="hop-node">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>1. Coordinator Agent</strong>
+              <span class="badge badge-cyan">@sam-mesh/sdk</span>
+            </div>
+            <div class="kv-label">Peer ID</div>
+            <div id="d2-peer-1" class="peer-box" style="margin-bottom:0;">Loading...</div>
+          </div>
+
+          <div class="hop-arrow">
+            <div>a2a://researcher</div>
+            <div style="font-size:18px;">&xrarr;</div>
+            <div id="d2-hop1-ms" class="badge badge-emerald">- ms</div>
+          </div>
+
+          <div id="d2-node-2" class="hop-node">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>2. Researcher Agent</strong>
+              <span class="badge badge-purple">A2A Handler</span>
+            </div>
+            <div class="kv-label">Peer ID</div>
+            <div id="d2-peer-2" class="peer-box" style="margin-bottom:0;">Loading...</div>
+          </div>
+
+          <div class="hop-arrow">
+            <div>a2a://git-analyzer</div>
+            <div style="font-size:18px;">&xrarr;</div>
+            <div id="d2-hop2-ms" class="badge badge-emerald">- ms</div>
+          </div>
+
+          <div id="d2-node-3" class="hop-node">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong>3. Git Diff Analyzer</strong>
+              <span class="badge badge-emerald">Tool Provider</span>
+            </div>
+            <div class="kv-label">Peer ID</div>
+            <div id="d2-peer-3" class="peer-box" style="margin-bottom:0;">Loading...</div>
+          </div>
+        </div>
+
+        <div class="kv-label">Cryptographic Hop Waterfall &amp; Verified Caller Lineage</div>
+        <div id="d2-waterfall" class="event-list"></div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 3: "Scan-to-Join" Multi-Agent Collaboration Room              -->
+    <!-- ================================================================== -->
+    <section id="panel-demo3" class="demo-panel">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Room Enrollment QR &amp; Usage Budget</h2>
+            <span id="d3-budget-badge" class="badge badge-cyan">0 / 4 Slots Claimed</span>
+          </div>
+          <div class="qr-box">
+            <svg width="88" height="88" viewBox="0 0 88 88" fill="none" style="flex-shrink:0; background:#fff; padding:6px; border-radius:6px;">
+              <rect x="4" y="4" width="24" height="24" stroke="#080c14" stroke-width="4" fill="none"/>
+              <rect x="10" y="10" width="12" height="12" fill="#080c14"/>
+              <rect x="60" y="4" width="24" height="24" stroke="#080c14" stroke-width="4" fill="none"/>
+              <rect x="66" y="10" width="12" height="12" fill="#080c14"/>
+              <rect x="4" y="60" width="24" height="24" stroke="#080c14" stroke-width="4" fill="none"/>
+              <rect x="10" y="66" width="12" height="12" fill="#080c14"/>
+              <rect x="36" y="8" width="8" height="8" fill="#080c14"/>
+              <rect x="36" y="24" width="16" height="8" fill="#080c14"/>
+              <rect x="8" y="36" width="16" height="8" fill="#080c14"/>
+              <rect x="36" y="40" width="20" height="12" fill="#080c14"/>
+              <rect x="64" y="38" width="16" height="8" fill="#080c14"/>
+              <rect x="36" y="60" width="12" height="20" fill="#080c14"/>
+              <rect x="56" y="60" width="24" height="12" fill="#080c14"/>
+              <rect x="68" y="76" width="12" height="8" fill="#080c14"/>
+            </svg>
+            <div style="flex:1; min-width:0;">
+              <div class="kv-label">sam://enroll Provisioning URI</div>
+              <div id="d3-enroll-uri" class="peer-box" style="margin-bottom:0; font-size:10.5px;">Loading...</div>
+            </div>
+          </div>
+
+          <div class="kv-label">Bootstrap Token Consumption (<code>max_usages: 4</code>)</div>
+          <div class="progress-track">
+            <div id="d3-usage-bar" class="progress-fill" style="width: 0%;"></div>
+          </div>
+
+          <div class="kv-label">Onboard Agents with Room Token</div>
+          <div class="btn-row">
+            <button id="d3-join-1" class="btn btn-primary" onclick="demo3Join('Incident Commander', 'lead')">1. Join Commander</button>
+            <button id="d3-join-2" class="btn btn-primary" onclick="demo3Join('Log Triage Agent', 'triage')">2. Join Log Triage</button>
+            <button id="d3-join-3" class="btn btn-primary" onclick="demo3Join('Patch Synthesizer', 'patch')">3. Join Patch Agent</button>
+            <button id="d3-join-4" class="btn btn-primary" onclick="demo3Join('Mobile Approver', 'approver')">4. Join Mobile Approver</button>
+            <button id="d3-join-rogue" class="btn btn-rose" onclick="demo3Join('Uninvited Scraper', 'rogue')">5. Attempt 5th Rogue Join</button>
+          </div>
+
+          <div class="kv-label" style="margin-top: 14px;">Token Exhaustion &amp; Admission Rejections</div>
+          <div id="d3-rejections" class="event-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Admitted Incident Room Members &amp; A2A Broadcast</h2>
+            <button id="d3-broadcast-btn" class="btn btn-emerald" onclick="demo3Broadcast()">Broadcast Incident Directive</button>
+          </div>
+          <div id="d3-members-grid" class="event-list" style="max-height: 170px;"></div>
+          <div class="kv-label" style="margin-top: 12px;">Verified Room A2A Responses</div>
+          <div id="d3-messages" class="event-list" style="max-height: 190px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 4: Federated Specialist Swarm                                 -->
+    <!-- ================================================================== -->
+    <section id="panel-demo4" class="demo-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Concurrent Specialist Fan-Out Over Multiplexed Yamux Streams</h2>
+          <span id="d4-verdict-badge" class="badge badge-cyan">3 Specialists Online</span>
+        </div>
+        <div class="kv-label">Orchestrator Agent Peer ID</div>
+        <div id="d4-orch-peer" class="peer-box">Loading...</div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="d4-proposal" type="text" value="RFC-042: Enable zero-trust browser WebSocket relay for @sam-mesh/sdk" style="margin-bottom:0; flex:1;" />
+          <button id="d4-fanout-btn" class="btn btn-primary" onclick="demo4Fanout()">Fan Out Parallel Review</button>
+        </div>
+
+        <div id="d4-specialists-grid" class="spec-grid"></div>
+        <div id="d4-verdict" style="margin-top: 14px;"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function switchTab(name) {
+      for (const id of ['demo1', 'demo2', 'demo3', 'demo4']) {
+        document.getElementById('tab-' + id).classList.toggle('active', id === name);
+        document.getElementById('panel-' + id).classList.toggle('active', id === name);
+      }
+      if (name === 'demo1') await loadDemo1();
+      if (name === 'demo2') await loadDemo2();
+      if (name === 'demo3') await loadDemo3();
+      if (name === 'demo4') await loadDemo4();
+    }
+
+    // ---- DEMO 1 ----
+    async function loadDemo1() {
+      const r = await fetch('/api/demo1/state');
+      const s = await r.json();
+      document.getElementById('d1-alpha-peer').textContent = s.alphaPeerId;
+      document.getElementById('d1-beta-peer').textContent = s.betaPeerId;
+      document.getElementById('d1-alpha-relay').textContent = s.alphaRelay;
+      document.getElementById('d1-beta-relay').textContent = s.betaRelay;
+      document.getElementById('d1-router-addr').textContent = s.routerAddr;
+      document.getElementById('d1-datalog-rules').textContent = (s.datalogRules || []).join('\n');
+
+      const policyBadge = document.getElementById('d1-policy-badge');
+      if (s.policyMode === 'allow') {
+        policyBadge.className = 'badge badge-emerald';
+        policyBadge.textContent = 'POLICY: ALLOW *';
+      } else {
+        policyBadge.className = 'badge badge-amber';
+        policyBadge.textContent = 'POLICY: DENY a2a://*';
+      }
+
+      const betaStatus = document.getElementById('d1-beta-status');
+      if (s.betaBanned) {
+        betaStatus.className = 'badge badge-rose';
+        betaStatus.textContent = 'REVOKED (PEER_BAN)';
+      } else {
+        betaStatus.className = 'badge badge-emerald';
+        betaStatus.textContent = 'ADMITTED';
+      }
+
+      const streamLog = document.getElementById('d1-stream-log');
+      streamLog.innerHTML = s.messages.slice().reverse().map(m => {
+        if (m.status === 200) {
+          return `<div class="event-item ok" data-status="200">
+            <div class="event-meta"><span>HTTP 200 OK &bull; ${m.targetService}</span><span>${m.latencyMs} ms</span></div>
+            <div><strong>${m.from.toUpperCase()}:</strong> ${m.text}</div>
+            <div style="font-family:var(--mono); font-size:11px; color:var(--emerald); margin-top:3px;">
+              Verified Caller: ${m.response.verifiedCallerPeerId}
+            </div>
+          </div>`;
+        }
+        if (m.status === 403) {
+          return `<div class="event-item denied" data-status="403">
+            <div class="event-meta"><span>HTTP 403 FORBIDDEN &bull; ${m.targetService}</span><span>${m.latencyMs} ms</span></div>
+            <div><strong>Datalog Authorizer Refused Call:</strong> ${m.targetService} is not permitted by current mesh policy</div>
+          </div>`;
+        }
+        return `<div class="event-item banned" data-status="banned">
+          <div class="event-meta"><span>GOSSIPSUB PEER_BAN ENFORCED</span><span>${m.latencyMs} ms</span></div>
+          <div><strong>Connection Refused:</strong> ${m.error}</div>
+        </div>`;
+      }).join('');
+
+      const betaInbox = document.getElementById('d1-beta-inbox');
+      betaInbox.innerHTML = s.messages
+        .filter(m => m.status === 200)
+        .slice()
+        .reverse()
+        .map(m => `<div class="event-item ok">
+          <div class="event-meta"><span>X-SAM-Verified-Peer-ID</span><span>${m.latencyMs} ms</span></div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan);">${m.fromPeerId}</div>
+          <div style="margin-top:4px;">${m.response.reply}</div>
+        </div>`).join('');
+    }
+
+    async function demo1Send(from) {
+      const text = document.getElementById('d1-input').value;
+      await fetch('/api/demo1/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, text }),
+      });
+      await loadDemo1();
+    }
+
+    async function demo1SetPolicy(mode) {
+      await fetch('/api/demo1/policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      await loadDemo1();
+    }
+
+    async function demo1BanBeta() {
+      await fetch('/api/demo1/ban', { method: 'POST' });
+      await loadDemo1();
+    }
+
+    // ---- DEMO 2 ----
+    async function loadDemo2() {
+      const r = await fetch('/api/demo2/state');
+      const s = await r.json();
+      document.getElementById('d2-peer-1').textContent = s.coordinatorPeerId;
+      document.getElementById('d2-peer-2').textContent = s.researcherPeerId;
+      document.getElementById('d2-peer-3').textContent = s.gitAnalyzerPeerId;
+
+      if (s.traces.length > 0) {
+        const latest = s.traces[s.traces.length - 1];
+        document.getElementById('d2-hop1-ms').textContent = `${latest.hop1Ms} ms`;
+        document.getElementById('d2-hop2-ms').textContent = `${latest.hop2Ms} ms`;
+        document.getElementById('d2-total-badge').textContent = `2 Hops Verified in ${latest.totalMs} ms`;
+        document.getElementById('d2-node-1').classList.add('lit');
+        document.getElementById('d2-node-2').classList.add('lit');
+        document.getElementById('d2-node-3').classList.add('lit');
+      }
+
+      document.getElementById('d2-waterfall').innerHTML = s.traces.slice().reverse().map(t => `
+        <div class="event-item ok" data-trace-id="${t.id}">
+          <div class="event-meta">
+            <span>Trace #${t.id} &bull; ${t.commit}</span>
+            <span>Total: ${t.totalMs} ms (Hop 1: ${t.hop1Ms} ms, Hop 2: ${t.hop2Ms} ms)</span>
+          </div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan); margin:4px 0;">
+            Hop 1 Verified Caller: ${t.verifiedAtHop1} &rarr; Researcher (${t.researcherPeerId.slice(0, 18)}...)<br/>
+            Hop 2 Verified Caller: ${t.verifiedAtHop2} &rarr; GitAnalyzer (${t.gitAnalyzerPeerId.slice(0, 18)}...)
+          </div>
+          <div style="color:var(--emerald); font-weight:600;">${t.synthesis}</div>
+        </div>
+      `).join('');
+    }
+
+    async function demo2RunTrace() {
+      const commit = document.getElementById('d2-commit').value;
+      await fetch('/api/demo2/trace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commit }),
+      });
+      await loadDemo2();
+    }
+
+    // ---- DEMO 3 ----
+    async function loadDemo3() {
+      const r = await fetch('/api/demo3/state');
+      const s = await r.json();
+      document.getElementById('d3-enroll-uri').textContent = s.enrollUri;
+      document.getElementById('d3-budget-badge').textContent = `${s.usedCount} / ${s.maxUsages} Slots Claimed`;
+      const pct = Math.min(100, Math.round((s.usedCount / s.maxUsages) * 100));
+      const bar = document.getElementById('d3-usage-bar');
+      bar.style.width = pct + '%';
+      bar.classList.toggle('full', s.usedCount >= s.maxUsages);
+
+      document.getElementById('d3-members-grid').innerHTML = s.members.map((m, idx) => `
+        <div class="event-item ok" data-member="${m.name}">
+          <div class="event-meta"><span>Slot #${idx + 1} &bull; ${m.roleLabel.toUpperCase()}</span><span>ADMITTED</span></div>
+          <div><strong>${m.name}</strong></div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan);">${m.peerId}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('d3-rejections').innerHTML = s.rejections.map(rej => `
+        <div class="event-item banned" data-rejected="${rej.name}">
+          <div class="event-meta"><span>ENROLLMENT REJECTED</span><span>TOKEN BURNED</span></div>
+          <div><strong>${rej.name}:</strong> ${rej.reason}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('d3-messages').innerHTML = s.roomMessages.slice().reverse().map(msg => `
+        <div class="event-item ok">
+          <div class="event-meta"><span>Broadcast from ${msg.commander}</span><span>${msg.replies.length} Verified Replies</span></div>
+          <div style="margin-bottom:4px;"><strong>Directive:</strong> ${msg.directive}</div>
+          ${msg.replies.map(rep => `<div style="font-family:var(--mono); font-size:11px; color:var(--emerald);">&check; ${rep.ack}</div>`).join('')}
+        </div>
+      `).join('');
+    }
+
+    async function demo3Join(name, roleLabel) {
+      await fetch('/api/demo3/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, roleLabel }),
+      });
+      await loadDemo3();
+    }
+
+    async function demo3Broadcast() {
+      await fetch('/api/demo3/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directive: 'Rotate egress Biscuit signing key and isolate compromised pod' }),
+      });
+      await loadDemo3();
+    }
+
+    // ---- DEMO 4 ----
+    async function loadDemo4() {
+      const r = await fetch('/api/demo4/state');
+      const s = await r.json();
+      document.getElementById('d4-orch-peer').textContent = s.orchestratorPeerId;
+      const latest = s.runs[s.runs.length - 1];
+
+      document.getElementById('d4-specialists-grid').innerHTML = s.specialists.map(spec => {
+        const res = latest?.results?.find(x => x.peerId === spec.peerId);
+        return `<div class="card" style="background:var(--panel-alt); border-color:${res ? 'var(--emerald)' : 'var(--border)'};">
+          <div class="card-header">
+            <h3 class="card-title" style="font-size:13px;">${spec.name}</h3>
+            <span class="badge ${res ? 'badge-emerald' : 'badge-cyan'}">${res ? res.latencyMs + ' ms' : spec.service}</span>
+          </div>
+          <div class="kv-label">${spec.domain}</div>
+          <div class="peer-box" style="font-size:10.5px;">${spec.peerId}</div>
+          ${res ? `<div style="font-size:12px; color:var(--emerald); margin-top:6px;">${res.finding}</div>
+          <div style="font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:6px;">Verified Caller: ${res.verifiedOrchestratorPeerId.slice(0, 20)}...</div>` : '<div style="font-size:12px; color:var(--muted);">Awaiting parallel fan-out...</div>'}
+        </div>`;
+      }).join('');
+
+      if (latest) {
+        document.getElementById('d4-verdict-badge').className = 'badge badge-emerald';
+        document.getElementById('d4-verdict-badge').textContent = `Fan-Out Completed in ${latest.wallTimeMs} ms`;
+        document.getElementById('d4-verdict').innerHTML = `
+          <div class="event-item ok" data-verdict="approved">
+            <div class="event-meta"><span>SYNTHESIZED SWARM VERDICT</span><span>${latest.wallTimeMs} ms wall-clock</span></div>
+            <div style="font-weight:700; color:var(--emerald);">${latest.verdict}</div>
+          </div>`;
+      }
+    }
+
+    async function demo4Fanout() {
+      const proposal = document.getElementById('d4-proposal').value;
+      await fetch('/api/demo4/fanout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal }),
+      });
+      await loadDemo4();
+    }
+
+    loadDemo1();
+  </script>
+</body>
+</html>
