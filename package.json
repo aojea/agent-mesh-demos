@@ -7,12 +7,14 @@
   "scripts": {
     "setup": "./scripts/setup-sam.sh",
     "start": "node server.mjs",
+    "test": "playwright test",
     "record": "node scripts/record-videos.mjs"
   },
   "dependencies": {
-    "@sam-mesh/sdk": "next"
+    "@sam-mesh/sdk": "^0.1.0-rc.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "playwright": "^1.50.0"
   }
 }

@@ -61,7 +61,16 @@ const samOneUrl = `http://127.0.0.1:${samOnePort}`;
 
 const samOneProc = spawn(
   SAM_ONE_BIN,
-  ["--bind-address", "127.0.0.1", "--port", String(samOnePort), "--data-dir", samOneDataDir],
+  [
+    "--bind-address",
+    "127.0.0.1",
+    "--port",
+    String(samOnePort),
+    "--p2p-listen",
+    "/ip4/127.0.0.1/tcp/0",
+    "--data-dir",
+    samOneDataDir,
+  ],
   {
     env: { ...process.env, SAM_ADMIN_TOKEN: ADMIN_TOKEN },
     stdio: ["ignore", "pipe", "pipe"],
@@ -177,9 +186,10 @@ async function ensureDemo1() {
   demo1.beta = await enrollAndJoin();
   activeSessions.push(demo1.alpha.session, demo1.beta.session);
 
-  await demo1.alpha.session.acceptA2A({
-    service: "planner",
-    handler: async (req, caller) => {
+  await demo1.alpha.session.serve({
+    type: "a2a",
+    name: "planner",
+    target: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         agent: "Agent Alpha (Planner)",
@@ -191,9 +201,10 @@ async function ensureDemo1() {
     },
   });
 
-  await demo1.beta.session.acceptA2A({
-    service: "auditor",
-    handler: async (req, caller) => {
+  await demo1.beta.session.serve({
+    type: "a2a",
+    name: "auditor",
+    target: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         agent: "Agent Beta (Security Auditor)",
@@ -230,9 +241,10 @@ async function ensureDemo2() {
     demo2.gitAnalyzer.session,
   );
 
-  await demo2.gitAnalyzer.session.acceptA2A({
-    service: "git-analyzer",
-    handler: async (req, caller) => {
+  await demo2.gitAnalyzer.session.serve({
+    type: "a2a",
+    name: "git-analyzer",
+    target: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         tool: "summarize_diff",
@@ -243,9 +255,10 @@ async function ensureDemo2() {
     },
   });
 
-  await demo2.researcher.session.acceptA2A({
-    service: "researcher",
-    handler: async (req, caller) => {
+  await demo2.researcher.session.serve({
+    type: "a2a",
+    name: "researcher",
+    target: async (req, caller) => {
       const body = await req.json();
       const hop2Start = performance.now();
       await demo2.researcher.session.connect(demo2.gitAnalyzer.session.peerId);
@@ -337,9 +350,10 @@ async function ensureDemo4() {
   );
 
   for (const spec of demo4.specialists) {
-    await spec.session.acceptA2A({
-      service: spec.service,
-      handler: async (req, caller) => {
+    await spec.session.serve({
+      type: "a2a",
+      name: spec.service,
+      target: async (req, caller) => {
         const body = await req.json();
         const findingsBySpec = {
           sec: `Ed25519 PoP verified; Mutual TLS 1.3 + Biscuit attestation confirmed for "${body.proposal}". Verdict: PASS.`,
@@ -462,6 +476,8 @@ const server = http.createServer(async (req, res) => {
       const { mode } = await readJson(req);
       demo1.policyMode = mode === "deny" ? "deny" : "allow";
       await setMeshPolicy(demo1.policyMode);
+      await demo1.alpha.session.refresh();
+      await demo1.beta.session.refresh();
       await demo1.alpha.session.syncPolicy();
       await demo1.beta.session.syncPolicy();
       sendJson(res, 200, {
@@ -563,9 +579,10 @@ const server = http.createServer(async (req, res) => {
         const enrolled = await enrollAndJoin(demo3.roomToken);
         activeSessions.push(enrolled.session);
         const memberIndex = demo3.members.length;
-        await enrolled.session.acceptA2A({
-          service: "room",
-          handler: async (reqMsg, caller) => {
+        await enrolled.session.serve({
+          type: "a2a",
+          name: "room",
+          target: async (reqMsg, caller) => {
             const body = await reqMsg.json();
             return Response.json({
               member: name,

@@ -1,20 +1,26 @@
 name: Verify & Record Demos
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       sam_version:
-        description: "SAM release tag to run against (e.g. v0.1.0-rc.6 or latest)"
+        description: "SAM release tag to run against (e.g. v0.1.0-rc.5 or latest)"
         required: false
-        default: "latest"
+        default: "v0.1.0-rc.5"
         type: string
 
 permissions:
   contents: read
 
 jobs:
-  record:
+  test-and-record:
     runs-on: ubuntu-latest
+    env:
+      SAM_VERSION: ${{ inputs.sam_version || 'v0.1.0-rc.5' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +28,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install dependencies and SAM release (${{ inputs.sam_version || 'latest' }})
-        env:
-          SAM_VERSION: ${{ inputs.sam_version || 'latest' }}
+      - name: Install dependencies and SAM release (${{ env.SAM_VERSION }})
         run: |
           npm install --no-audit --no-fund
           chmod +x ./scripts/setup-sam.sh
@@ -32,10 +36,13 @@ jobs:
           npx playwright install --with-deps chromium
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      - name: Run Playwright E2E tests for all 4 demos
+        run: npm test
+
       - name: Record all 4 demo videos
         run: npm run record
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sam-demo-videos-${{ inputs.sam_version || 'latest' }}
+          name: sam-demo-videos-${{ env.SAM_VERSION }}
           path: videos/*.mp4

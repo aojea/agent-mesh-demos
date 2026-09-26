@@ -1,5 +1,7 @@
 node_modules/
 .sam-bin/
-videos/
+videos/*.webm
+test-results/
+playwright-report/
 *.log
 *.metadata.json
