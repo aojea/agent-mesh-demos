@@ -1,73 +1,72 @@
-# Sovereign Agent Mesh (`SAM`) — Interactive Demos
+# Sovereign Agent Mesh (`@sam-mesh/sdk` + `sam-one`) Interactive Demos
 
-Interactive browser and multi-agent demos built on [`@sam-mesh/sdk`](https://github.com/google/sam/tree/main/sdk/js) and [`sam-one`](https://github.com/google/sam/tree/main/cmd/sam-one).
-
-Every demo runs real `@sam-mesh/sdk` `MeshSession` agents connected to a `sam-one` server (control plane + libp2p circuit relay router + Biscuit Datalog policy authority), parameterized by `SAM_VERSION` (defaulting to the tagged release `v0.1.0-rc.5`).
+Interactive browser and multi-agent mesh demos powered by [`@sam-mesh/sdk`](https://www.npmjs.com/package/@sam-mesh/sdk) and the single-binary [`sam-one`](https://github.com/google/sam) appliance.
 
 ---
 
-## Demos & Recorded Videos (`videos/`)
+## Recorded Walkthroughs
 
-### 1. Zero-Trust Two-Agent Playground ([`videos/demo-two-agent-playground.mp4`](videos/demo-two-agent-playground.mp4))
-Two `@sam-mesh/sdk` agents (**Agent Alpha — Planner** and **Agent Beta — Security Auditor**) enroll with `sam-one`, reserve circuit relay slots, and exchange A2A requests over `/libp2p-http`.
-- Inspect live Biscuit facts (`node(...)`, `role("sam:role:node")`) and `X-SAM-Verified-Peer-ID` headers.
-- Mutate the mesh's Datalog policy live (`POST /policies`) and watch unauthorized A2A calls get rejected (`403 Forbidden`) at the stream gate before reaching the agent handler.
-- Trigger a live peer revocation (`POST /user/revoke`) and watch `sam-one` broadcast a signed `PEER_BAN` over GossipSub (`sam/events/1.0.0`), terminating the peer's streams in milliseconds.
+### 1. Zero-Trust Two-Agent Playground (`Agent Alpha` ↔ `Agent Beta`)
 
-### 2. Polyglot "Follow the Packet" Hop Tracer ([`videos/demo-polyglot-hop-tracer.mp4`](videos/demo-polyglot-hop-tracer.mp4))
-Traces a single task cascading across multiple mesh members (`a2a://researcher` $\to$ `a2a://git-analyzer`):
-- **Hop 1 (`@sam-mesh/sdk` Coordinator)** dials `a2a://researcher` over `/p2p-circuit`.
-- **Hop 2 (Researcher Agent)** verifies the Coordinator's Biscuit token and invokes `a2a://git-analyzer`.
-- **Hop 3 (Git Diff Analyzer)** verifies the Researcher's Biscuit token, runs the analysis, and returns the result up the chain with per-hop latency and cryptographic peer verification.
+Two independent JavaScript agents enroll with `sam-one`, reserve Circuit Relay v2 slots, and exchange authenticated A2A requests (`/libp2p-http`). Toggling Datalog policy rules via `POST /policies` immediately rejects unauthorized A2A traffic (`HTTP 403 Forbidden`), and revoking a peer via `POST /user/revoke` propagates a signed `PEER_BAN` event that tears down active streams.
 
-### 3. "Scan-to-Join" Multi-Agent Room ([`videos/demo-qr-multi-agent-room.mp4`](videos/demo-qr-multi-agent-room.mp4))
-Demonstrates `sam-one`'s bounded-budget device enrollment tokens (`sam://enroll?server=...&token=...`):
-- Mints a shared room enrollment token with a strict usage budget (`max_usages: 4`).
-- Four specialist agents (`Incident Commander`, `Log Triage`, `Patch Synthesizer`, `Mobile Approver`) claim a slot, generate Ed25519 identities, join the mesh room, and coordinate an incident mitigation over A2A.
-- When a 5th uninvited agent attempts to reuse the room token, `sam-one` rejects the enrollment (`Bootstrap token max usages exceeded`).
+[![Zero-Trust Two-Agent Playground](./videos/demo-two-agent-playground.gif)](./videos/demo-two-agent-playground.mp4)
 
-### 4. Federated Specialist Swarm ([`videos/demo-federated-inference-swarm.mp4`](videos/demo-federated-inference-swarm.mp4))
-An Orchestrator Agent fans out a security & architecture review concurrently across three mesh specialist agents (`Security Specialist`, `Performance Profiler`, `Compliance Verifier`) over multiplexed Yamux streams through `sam-one`, streaming each verified peer's findings in parallel and synthesizing a unified release gate decision.
+> [Download / View High-Res MP4 (`videos/demo-two-agent-playground.mp4`)](./videos/demo-two-agent-playground.mp4)
 
 ---
 
-## Quick Start (Parameterized by Tagged SAM Version)
+### 2. Polyglot "Follow the Packet" Hop Tracer
 
-### 1. Install a Tagged Release of `sam-one` and `@sam-mesh/sdk`
+Traces a 2-hop agent-to-agent-to-tool call chain across 3 distinct mesh identities (`Coordinator` → `Researcher` → `Git Diff Analyzer`), recording per-hop latency and cryptographically verified caller Peer IDs at every boundary (`X-SAM-Biscuit` stripped before reaching the workload handler).
+
+[![Polyglot Follow the Packet Hop Tracer](./videos/demo-polyglot-hop-tracer.gif)](./videos/demo-polyglot-hop-tracer.mp4)
+
+> [Download / View High-Res MP4 (`videos/demo-polyglot-hop-tracer.mp4`)](./videos/demo-polyglot-hop-tracer.mp4)
+
+---
+
+### 3. "Scan-to-Join" Multi-Agent Collaboration Room
+
+Mints a single-purpose enrollment token (`max_usages: 4`) rendered as a `sam://enroll?server=...&token=...` URI and QR badge. Four incident-response agents enroll and collaborate over A2A, while a 5th uninvited scraper agent attempting to reuse the exhausted token is rejected by `sam-one`.
+
+[![Scan-to-Join Multi-Agent Collaboration Room](./videos/demo-qr-multi-agent-room.gif)](./videos/demo-qr-multi-agent-room.mp4)
+
+> [Download / View High-Res MP4 (`videos/demo-qr-multi-agent-room.mp4`)](./videos/demo-qr-multi-agent-room.mp4)
+
+---
+
+### 4. Federated Specialist Swarm
+
+An orchestrator agent fans out a parallel architecture review (`Promise.all`) across 3 independent specialist agents (`a2a://sec-review`, `a2a://perf-review`, `a2a://comp-review`) over multiplexed Yamux streams and aggregates their verified verdicts.
+
+[![Federated Specialist Swarm](./videos/demo-federated-inference-swarm.gif)](./videos/demo-federated-inference-swarm.mp4)
+
+> [Download / View High-Res MP4 (`videos/demo-federated-inference-swarm.mp4`)](./videos/demo-federated-inference-swarm.mp4)
+
+---
+
+## Quick Start (Tagged Release)
+
+Fetch a tagged `sam-one` binary from `google/sam` and install the matching `@sam-mesh/sdk` package from npm:
 
 ```bash
-# Defaults to the latest release of google/sam, or pass any tagged SAM_VERSION:
-SAM_VERSION=v0.1.0-rc.5 npm run setup
+SAM_VERSION=v0.1.0-rc.5 ./scripts/setup-sam.sh
+npm start
 ```
 
-### 2. Run the Playwright E2E Test Suite
+Open `http://127.0.0.1:4400` in your browser.
+
+## Run Playwright E2E Tests
 
 ```bash
 npm test
 ```
 
-### 3. Run the Interactive Demo Suite
+## Re-Record Videos
 
-```bash
-npm start
-```
-
-Open `http://127.0.0.1:4400` in your browser to switch between all four live demos.
-
-### 4. Re-record the `.mp4` Showcase Videos
+Requires Playwright (`npx playwright install chromium`) and `ffmpeg`:
 
 ```bash
 npm run record
 ```
-
-This boots `sam-one` and the demo server, drives all four demos in headless Chromium (`1280x720`) via Playwright video capture, and transcodes the recordings with `ffmpeg` into H.264 `.mp4` files under [`videos/`](videos/).
-
-### Environment Variables
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `SAM_VERSION` | `latest` | Tagged SAM release installed by `npm run setup` (e.g. `v0.1.0-rc.5`). |
-| `SAM_REPO` | `google/sam` | GitHub repository from which `setup-sam.sh` downloads `sam-one`. |
-| `SAM_ONE_BIN` | `./.sam-bin/sam-one` | Path to the `sam-one` binary used by `server.mjs`. |
-| `SAM_SDK_DIST` | `@sam-mesh/sdk` | Optional path to a local `sdk/js/dist/index.js` build. |
-| `VIDEOS_OUT_DIR` | `./videos` | Output directory for `npm run record`. |

@@ -65,6 +65,7 @@ async function recordScenario(browser, name, fn) {
   await context.close();
   const webmPath = await video.path();
   const mp4Path = path.join(OUT_DIR, `${name}.mp4`);
+  const gifPath = path.join(OUT_DIR, `${name}.gif`);
   execFileSync(
     "ffmpeg",
     [
@@ -85,8 +86,20 @@ async function recordScenario(browser, name, fn) {
     ],
     { stdio: "ignore" },
   );
+  execFileSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      mp4Path,
+      "-vf",
+      "fps=10,scale=1024:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5",
+      gifPath,
+    ],
+    { stdio: "ignore" },
+  );
   fs.rmSync(tmpDir, { recursive: true, force: true });
-  console.log(`Recorded ${mp4Path}`);
+  console.log(`Recorded ${mp4Path} and ${gifPath}`);
 }
 
 const childEnv = {
