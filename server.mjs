@@ -404,7 +404,7 @@ const demo6 = {
   pepTcpAddr: null,
   pepLabel: "site=eu",
   secretName: "github-eu",
-  secretPreview: "ghp_eu_sovereign_vault_99a8b7c6",
+  secretPreview: "ghp_eu_vault_99a8b7c6",
   contractor: null,
   datalogRules: [],
   requests: [],
@@ -426,10 +426,10 @@ const demo6UpstreamServer = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
   res.end(
     JSON.stringify({
-      destination: "api.github.com (EU Sovereign Egress Origin)",
+      destination: "api.github.com (EU Egress Origin)",
       method: req.method,
       path: req.url,
-      injectedCredential: "github-eu (Bearer ghp_eu_sovereign_vault_****)",
+      injectedCredential: "github-eu (Bearer ghp_eu_vault_****)",
       biscuitStripped,
       pulls: [
         {
