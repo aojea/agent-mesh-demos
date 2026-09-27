@@ -998,17 +998,71 @@ paths:   ["/repos/acme/*"]</pre>
         document.getElementById('d5-leave-btn').style.display = 'inline-block';
 
         const svcName = name.toLowerCase().replace(/\s+/g, '-');
+        const { A2A_PROTOCOL_VERSION, AGENT_CARD_PATH, Role } = sdk.a2a;
+        const { AgentEvent, DefaultRequestHandler, InMemoryTaskStore, JsonRpcTransportHandler, ServerCallContext } = sdk.a2aServer;
+        const agentUrl = sdk.MeshSession.meshURL(browserSession.peerId, `a2a://${svcName}`);
+        const card = {
+          name,
+          description: `In-browser SAM mesh agent (${name})`,
+          version: '1.0.0',
+          supportedInterfaces: [{ url: agentUrl, protocolBinding: 'JSONRPC', tenant: '', protocolVersion: A2A_PROTOCOL_VERSION }],
+          provider: undefined,
+          documentationUrl: '',
+          capabilities: { streaming: true, pushNotifications: false, extendedAgentCard: false, extensions: [] },
+          securitySchemes: {},
+          securityRequirements: [],
+          defaultInputModes: ['text/plain', 'application/json'],
+          defaultOutputModes: ['text/plain', 'application/json'],
+          skills: [{ id: svcName, name, description: 'In-browser A2A skill', tags: ['a2a', 'browser'], examples: [], inputModes: [], outputModes: [], securityRequirements: [] }],
+          signatures: [],
+          iconUrl: '',
+        };
+        const executor = {
+          async execute(context, eventBus) {
+            const said = context.userMessage.parts.map((p) => (p.content?.$case === 'text' ? p.content.value : '')).join('');
+            const callerPeerId = context.context?.user?.userName ?? 'unknown';
+            d5Log(`Accepted A2A SendMessage from verified peer ${callerPeerId}: ${said}`);
+            eventBus.publish(
+              AgentEvent.message({
+                messageId: crypto.randomUUID(),
+                contextId: context.contextId,
+                taskId: '',
+                role: Role.ROLE_AGENT,
+                parts: [{ content: { $case: 'text', value: JSON.stringify({ reply: `Browser Agent ${name} acknowledged via A2A JSON-RPC` }) }, filename: '', mediaType: 'application/json', metadata: undefined }],
+                metadata: undefined,
+                extensions: [],
+                referenceTaskIds: [],
+              }),
+            );
+            eventBus.finished();
+          },
+          async cancelTask() {},
+        };
+        const transport = new JsonRpcTransportHandler(new DefaultRequestHandler(card, new InMemoryTaskStore(), executor));
         await browserSession.acceptA2A({
           name: svcName,
           handler: async (req, caller) => {
-            const body = await req.json();
-            d5Log(`Accepted A2A request from verified peer ${caller.peerId}`);
-            return Response.json({
-              reply: `Browser Agent ${name} received: "${body.text || body.directive || 'Ping'}"`,
-            });
+            const reqPath = new URL(req.url).pathname;
+            if (req.method === 'GET' && reqPath === `/${AGENT_CARD_PATH}`) {
+              d5Log(`Served /.well-known/agent-card.json to verified peer ${caller.peerId}`);
+              return Response.json(card);
+            }
+            if (req.method !== 'POST') return new Response('not found\n', { status: 404 });
+            const callContext = new ServerCallContext({ user: { isAuthenticated: true, userName: caller.peerId }, requestedVersion: req.headers.get('a2a-version') ?? undefined });
+            const result = await transport.handle(await req.text(), callContext);
+            return Response.json(result);
           },
         });
-        d5Log(`Serving a2a://${svcName} directly from this browser tab.`);
+        d5Log(`Serving A2A AgentCard & JSON-RPC at a2a://${svcName} directly from this browser tab.`);
+        try {
+          await fetch('/api/demo5/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ peerId: browserSession.peerId, service: `a2a://${svcName}` }),
+          });
+        } catch {
+          // Static hosting mode without local verifier backend
+        }
       } catch (err) {
         d5Log(`Error: ${err.message}`, 'banned');
         statusBadge.className = 'badge badge-rose';

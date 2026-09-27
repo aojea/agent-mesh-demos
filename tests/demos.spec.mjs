@@ -90,6 +90,8 @@ test("5. Zero-Install Browser Playground: in-browser WebAssembly Biscuit + WebSo
   await page.click("#d5-join-btn");
   await expect(page.locator("#d5-peer-id")).toHaveText(/^12D3KooW/, { timeout: 15000 });
   await expect(page.locator("#d5-status-badge")).toHaveText("Connected");
+  await expect(page.locator("#d5-console")).toContainText("Served /.well-known/agent-card.json to verified peer");
+  await expect(page.locator("#d5-console")).toContainText("Accepted A2A SendMessage from verified peer");
 
   await page.click("#d5-leave-btn");
   await expect(page.locator("#d5-status-badge")).toHaveText("Disconnected");

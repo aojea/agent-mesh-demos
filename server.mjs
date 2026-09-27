@@ -13,12 +13,26 @@
 // limitations under the License.
 
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { A2A_PROTOCOL_VERSION, AGENT_CARD_PATH, Message, Role } from "@a2a-js/sdk";
+import {
+  ClientFactory,
+  DefaultAgentCardResolver,
+  JsonRpcTransportFactory,
+} from "@a2a-js/sdk/client";
+import {
+  AgentEvent,
+  DefaultRequestHandler,
+  InMemoryTaskStore,
+  JsonRpcTransportHandler,
+  ServerCallContext,
+} from "@a2a-js/sdk/server";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const localSamBin = path.join(__dirname, ".sam-bin", "sam-one");
@@ -177,6 +191,192 @@ async function closeActiveSessions() {
 }
 
 // ============================================================================
+// A2A Protocol (@a2a-js/sdk) Helpers over SAM Mesh (/libp2p-http)
+// ============================================================================
+async function registerA2AAgent(session, { name, title, description, onMessage }) {
+  const url = sdk.MeshSession.meshURL(session.peerId, `a2a://${name}`);
+  const card = {
+    name: title,
+    description,
+    version: "1.0.0",
+    supportedInterfaces: [
+      {
+        url,
+        protocolBinding: "JSONRPC",
+        tenant: "",
+        protocolVersion: A2A_PROTOCOL_VERSION,
+      },
+    ],
+    provider: undefined,
+    documentationUrl: "",
+    capabilities: {
+      streaming: true,
+      pushNotifications: false,
+      extendedAgentCard: false,
+      extensions: [],
+    },
+    securitySchemes: {},
+    securityRequirements: [],
+    defaultInputModes: ["text/plain", "application/json"],
+    defaultOutputModes: ["text/plain", "application/json"],
+    skills: [
+      {
+        id: name,
+        name: title,
+        description,
+        tags: ["a2a", "sam-mesh", name],
+        examples: [],
+        inputModes: [],
+        outputModes: [],
+        securityRequirements: [],
+      },
+    ],
+    signatures: [],
+    iconUrl: "",
+  };
+
+  const verifiedCallers = new Map();
+  const executor = {
+    async execute(context, eventBus) {
+      const text = context.userMessage.parts
+        .map((p) => (p.content?.$case === "text" ? p.content.value : ""))
+        .join("");
+      const callerPeerId = context.context?.user?.userName ?? "";
+      const caller = verifiedCallers.get(callerPeerId) || {
+        peerId: callerPeerId,
+        roles: [],
+      };
+      let inputObj = { text };
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === "object") inputObj = parsed;
+      } catch {
+        // plain text message
+      }
+      const resultPayload = await onMessage(inputObj, caller, text);
+      const replyText =
+        typeof resultPayload === "string"
+          ? resultPayload
+          : JSON.stringify(resultPayload);
+      eventBus.publish(
+        AgentEvent.message({
+          messageId: crypto.randomUUID(),
+          contextId: context.contextId,
+          taskId: "",
+          role: Role.ROLE_AGENT,
+          parts: [
+            {
+              content: { $case: "text", value: replyText },
+              filename: "",
+              mediaType: "application/json",
+              metadata: undefined,
+            },
+          ],
+          metadata: undefined,
+          extensions: [],
+          referenceTaskIds: [],
+        }),
+      );
+      eventBus.finished();
+    },
+    async cancelTask() {},
+  };
+
+  const transport = new JsonRpcTransportHandler(
+    new DefaultRequestHandler(card, new InMemoryTaskStore(), executor),
+  );
+
+  await session.acceptA2A({
+    name,
+    handler: async (request, caller) => {
+      verifiedCallers.set(caller.peerId, caller);
+      const reqPath = new URL(request.url).pathname;
+      if (request.method === "GET" && reqPath === `/${AGENT_CARD_PATH}`) {
+        return Response.json(card);
+      }
+      if (request.method !== "POST") {
+        return new Response("not found\n", { status: 404 });
+      }
+      const callContext = new ServerCallContext({
+        user: { isAuthenticated: true, userName: caller.peerId },
+        requestedVersion: request.headers.get("a2a-version") ?? undefined,
+      });
+      const result = await transport.handle(await request.text(), callContext);
+      if (Symbol.asyncIterator in result) {
+        const encoder = new TextEncoder();
+        const body = new ReadableStream({
+          async pull(controller) {
+            const next = await result.next();
+            if (next.done) {
+              controller.close();
+            } else {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
+            }
+          },
+        });
+        return new Response(body, { headers: { "content-type": "text/event-stream" } });
+      }
+      return Response.json(result);
+    },
+  });
+}
+
+async function callA2AAgent(senderSession, targetPeerId, targetService, payload) {
+  await senderSession.connect(targetPeerId);
+  const baseFetch = senderSession.fetch();
+  let lastStatus = 200;
+  let lastErrorText = "";
+  const fetchImpl = async (input, init) => {
+    const res = await baseFetch(input, init);
+    lastStatus = res.status;
+    if (!res.ok) {
+      lastErrorText = await res.clone().text();
+    }
+    return res;
+  };
+
+  const factory = new ClientFactory({
+    transports: [new JsonRpcTransportFactory({ fetchImpl })],
+    cardResolver: new DefaultAgentCardResolver({ fetchImpl }),
+  });
+  const agentUrl = sdk.MeshSession.meshURL(targetPeerId, targetService);
+  try {
+    const client = await factory.createFromUrl(`${agentUrl}/`);
+    const card = await client.getAgentCard();
+    const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+    const answer = await client.sendMessage({
+      tenant: "",
+      message: Message.fromJSON({
+        messageId: crypto.randomUUID(),
+        role: Role[Role.ROLE_USER],
+        parts: [{ text }],
+      }),
+      configuration: undefined,
+      metadata: undefined,
+    });
+    const parts = "parts" in answer ? answer.parts : (answer.status?.message?.parts ?? []);
+    const replyText = parts
+      .map((p) => (p.content?.$case === "text" ? p.content.value : ""))
+      .join("");
+    let data;
+    try {
+      data = JSON.parse(replyText);
+    } catch {
+      data = { raw: replyText };
+    }
+    return { status: 200, card, data };
+  } catch (err) {
+    if (lastStatus === 403 || String(err.message).includes("403")) {
+      return {
+        status: 403,
+        data: { raw: lastErrorText || err.message },
+      };
+    }
+    throw err;
+  }
+}
+
+// ============================================================================
 // DEMO 1: Zero-Trust Two-Agent Playground (Alpha <-> Beta over sam-one /ws)
 // ============================================================================
 const demo1 = {
@@ -197,32 +397,30 @@ async function ensureDemo1() {
   demo1.beta = await enrollAndJoin();
   activeSessions.push(demo1.alpha.session, demo1.beta.session);
 
-  await demo1.alpha.session.acceptA2A({
+  await registerA2AAgent(demo1.alpha.session, {
     name: "planner",
-    handler: async (req, caller) => {
-      const body = await req.json();
-      return Response.json({
-        agent: "Agent Alpha (Planner)",
-        responderPeerId: demo1.alpha.session.peerId,
-        verifiedCallerPeerId: caller.peerId,
-        verifiedCallerRoles: caller.roles,
-        reply: `Plan updated with audit feedback: "${body.text}"`,
-      });
-    },
+    title: "Agent Alpha (Planner)",
+    description: "Plans release deployments and coordinates audits over A2A.",
+    onMessage: async (body, caller) => ({
+      agent: "Agent Alpha (Planner)",
+      responderPeerId: demo1.alpha.session.peerId,
+      verifiedCallerPeerId: caller.peerId,
+      verifiedCallerRoles: caller.roles,
+      reply: `Plan updated with audit feedback: "${body.text}"`,
+    }),
   });
 
-  await demo1.beta.session.acceptA2A({
+  await registerA2AAgent(demo1.beta.session, {
     name: "auditor",
-    handler: async (req, caller) => {
-      const body = await req.json();
-      return Response.json({
-        agent: "Agent Beta (Security Auditor)",
-        responderPeerId: demo1.beta.session.peerId,
-        verifiedCallerPeerId: caller.peerId,
-        verifiedCallerRoles: caller.roles,
-        reply: `Zero-trust audit passed for: "${body.text}" (Biscuit signature verified, no raw token forwarded)`,
-      });
-    },
+    title: "Agent Beta (Security Auditor)",
+    description: "Verifies release SBOMs and cryptographic attestations over A2A.",
+    onMessage: async (body, caller) => ({
+      agent: "Agent Beta (Security Auditor)",
+      responderPeerId: demo1.beta.session.peerId,
+      verifiedCallerPeerId: caller.peerId,
+      verifiedCallerRoles: caller.roles,
+      reply: `Zero-trust audit passed for: "${body.text}" (Biscuit signature verified, no raw token forwarded)`,
+    }),
   });
   activeDemo = "demo1";
 }
@@ -250,44 +448,39 @@ async function ensureDemo2() {
     demo2.gitAnalyzer.session,
   );
 
-  await demo2.gitAnalyzer.session.acceptA2A({
+  await registerA2AAgent(demo2.gitAnalyzer.session, {
     name: "git-analyzer",
-    handler: async (req, caller) => {
-      const body = await req.json();
-      return Response.json({
-        tool: "summarize_diff",
-        providerPeerId: demo2.gitAnalyzer.session.peerId,
-        verifiedCallerPeerId: caller.peerId,
-        summary: `Analyzed ${body.commit || "HEAD~1..HEAD"}: TLS 1.3 WebSocket transport added in sdk/js/src/host.ts (+194/-0 lines), 0 vulnerabilities detected.`,
-      });
-    },
+    title: "GitAnalyzer Agent",
+    description: "Inspects commit diffs and security posture over A2A.",
+    onMessage: async (body, caller) => ({
+      tool: "summarize_diff",
+      providerPeerId: demo2.gitAnalyzer.session.peerId,
+      verifiedCallerPeerId: caller.peerId,
+      summary: `Analyzed ${body.commit || "HEAD~1..HEAD"}: TLS 1.3 WebSocket transport added in sdk/js/src/host.ts (+194/-0 lines), 0 vulnerabilities detected.`,
+    }),
   });
 
-  await demo2.researcher.session.acceptA2A({
+  await registerA2AAgent(demo2.researcher.session, {
     name: "researcher",
-    handler: async (req, caller) => {
-      const body = await req.json();
+    title: "Researcher Agent",
+    description: "Delegates commit analysis to GitAnalyzer over a 2nd A2A hop.",
+    onMessage: async (body, caller) => {
       const hop2Start = performance.now();
-      await demo2.researcher.session.connect(demo2.gitAnalyzer.session.peerId);
-      const toolRes = await demo2.researcher.session.request(
+      const hop2Res = await callA2AAgent(
+        demo2.researcher.session,
         demo2.gitAnalyzer.session.peerId,
         "a2a://git-analyzer",
-        "/invoke",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ commit: body.commit || "main@9f4c21a" }),
-        },
+        { commit: body.commit || "main@9f4c21a" },
       );
       const hop2Ms = Math.max(1, Math.round(performance.now() - hop2Start));
-      const toolData = JSON.parse(toolRes.text());
-      return Response.json({
+      const toolData = hop2Res.data;
+      return {
         researcherPeerId: demo2.researcher.session.peerId,
         verifiedCoordinatorPeerId: caller.peerId,
         hop2Ms,
         downstream: toolData,
         synthesis: `Verified diff via ${toolData.providerPeerId.slice(0, 16)}...: ${toolData.summary}`,
-      });
+      };
     },
   });
   activeDemo = "demo2";
@@ -357,22 +550,23 @@ async function ensureDemo4() {
   );
 
   for (const spec of demo4.specialists) {
-    await spec.session.acceptA2A({
+    await registerA2AAgent(spec.session, {
       name: spec.service,
-      handler: async (req, caller) => {
-        const body = await req.json();
+      title: spec.name,
+      description: `Specialist A2A reviewer for ${spec.domain}.`,
+      onMessage: async (body, caller) => {
         const findingsBySpec = {
           sec: `Ed25519 PoP verified; Mutual TLS 1.3 + Biscuit attestation confirmed for "${body.proposal}". Verdict: PASS.`,
           perf: `Single-port WebSocket + Yamux multiplexing keeps P99 relay overhead < 4ms for "${body.proposal}". Verdict: PASS.`,
           comp: `Datalog policy predicates carry >=1 term; X-SAM-Biscuit stripped prior to workload handler. Verdict: PASS.`,
         };
-        return Response.json({
+        return {
           specialist: spec.name,
           domain: spec.domain,
           peerId: spec.session.peerId,
           verifiedOrchestratorPeerId: caller.peerId,
           finding: findingsBySpec[spec.id],
-        });
+        };
       },
     });
   }
@@ -387,12 +581,15 @@ const demo5 = {
   samOneUrl,
   browserToken,
   enrollUri: `sam://enroll?server=${encodeURIComponent(samOneUrl)}&token=${encodeURIComponent(browserToken)}`,
+  verifier: null,
 };
 
 async function ensureDemo5() {
-  if (activeDemo === "demo5") return;
+  if (activeDemo === "demo5" && demo5.verifier) return;
   await closeActiveSessions();
   await setMeshPolicy("allow");
+  demo5.verifier = await enrollAndJoin();
+  activeSessions.push(demo5.verifier.session);
   activeDemo = "demo5";
 }
 
@@ -654,19 +851,8 @@ const server = http.createServer(async (req, res) => {
       const targetService = from === "alpha" ? "a2a://auditor" : "a2a://planner";
       const t0 = performance.now();
       try {
-        await sender.connect(receiver.peerId);
-        const r = await sender.request(receiver.peerId, targetService, "/task", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
+        const r = await callA2AAgent(sender, receiver.peerId, targetService, { text });
         const latencyMs = Math.max(1, Math.round(performance.now() - t0));
-        let parsed = {};
-        try {
-          parsed = JSON.parse(r.text());
-        } catch {
-          parsed = { raw: r.text() };
-        }
         const entry = {
           id: demo1.messages.length + 1,
           from,
@@ -676,7 +862,7 @@ const server = http.createServer(async (req, res) => {
           text,
           status: r.status,
           latencyMs,
-          response: parsed,
+          response: r.data,
         };
         demo1.messages.push(entry);
         sendJson(res, 200, entry);
@@ -750,19 +936,14 @@ const server = http.createServer(async (req, res) => {
       await ensureDemo2();
       const { commit = "main@9f4c21a" } = await readJson(req);
       const t0 = performance.now();
-      await demo2.coordinator.session.connect(demo2.researcher.session.peerId);
-      const r = await demo2.coordinator.session.request(
+      const r = await callA2AAgent(
+        demo2.coordinator.session,
         demo2.researcher.session.peerId,
         "a2a://researcher",
-        "/analyze",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ commit }),
-        },
+        { commit },
       );
       const totalMs = Math.max(2, Math.round(performance.now() - t0));
-      const payload = JSON.parse(r.text());
+      const payload = r.data;
       const trace = {
         id: demo2.traces.length + 1,
         commit,
@@ -807,17 +988,16 @@ const server = http.createServer(async (req, res) => {
         const enrolled = await enrollAndJoin(demo3.roomToken);
         activeSessions.push(enrolled.session);
         const memberIndex = demo3.members.length;
-        await enrolled.session.acceptA2A({
+        await registerA2AAgent(enrolled.session, {
           name: "room",
-          handler: async (reqMsg, caller) => {
-            const body = await reqMsg.json();
-            return Response.json({
-              member: name,
-              peerId: enrolled.session.peerId,
-              verifiedSender: caller.peerId,
-              ack: `${name} (${roleLabel}) confirmed action for: "${body.directive}"`,
-            });
-          },
+          title: `${name} (${roleLabel})`,
+          description: `Incident response room member: ${name} (${roleLabel}).`,
+          onMessage: async (body, caller) => ({
+            member: name,
+            peerId: enrolled.session.peerId,
+            verifiedSender: caller.peerId,
+            ack: `${name} (${roleLabel}) confirmed action for: "${body.directive}"`,
+          }),
         });
         demo3.members.push({ name, roleLabel, ...enrolled, index: memberIndex });
         demo3.usedCount += 1;
@@ -856,13 +1036,13 @@ const server = http.createServer(async (req, res) => {
       const commander = demo3.members[0];
       const replies = [];
       for (const target of demo3.members.slice(1)) {
-        await commander.session.connect(target.session.peerId);
-        const r = await commander.session.request(target.session.peerId, "a2a://room", "/broadcast", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ directive }),
-        });
-        replies.push(JSON.parse(r.text()));
+        const r = await callA2AAgent(
+          commander.session,
+          target.session.peerId,
+          "a2a://room",
+          { directive },
+        );
+        replies.push(r.data);
       }
       const broadcastEntry = {
         commander: commander.name,
@@ -899,20 +1079,15 @@ const server = http.createServer(async (req, res) => {
       const results = await Promise.all(
         demo4.specialists.map(async (s) => {
           const s0 = performance.now();
-          await demo4.orchestrator.session.connect(s.session.peerId);
-          const r = await demo4.orchestrator.session.request(
+          const r = await callA2AAgent(
+            demo4.orchestrator.session,
             s.session.peerId,
             `a2a://${s.service}`,
-            "/review",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ proposal }),
-            },
+            { proposal },
           );
           const latencyMs = Math.max(1, Math.round(performance.now() - s0));
           return {
-            ...JSON.parse(r.text()),
+            ...r.data,
             service: `a2a://${s.service}`,
             latencyMs,
           };
@@ -939,6 +1114,23 @@ const server = http.createServer(async (req, res) => {
         samOneUrl: demo5.samOneUrl,
         browserToken: demo5.browserToken,
         enrollUri: demo5.enrollUri,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/demo5/verify") {
+      await ensureDemo5();
+      const { peerId, service = "a2a://browser-agent" } = await readJson(req);
+      const r = await callA2AAgent(
+        demo5.verifier.session,
+        peerId,
+        service,
+        { text: "Verify in-browser A2A AgentCard & JSON-RPC endpoint over WebSocket relay" },
+      );
+      sendJson(res, 200, {
+        verifierPeerId: demo5.verifier.session.peerId,
+        agentCardName: r.card?.name,
+        reply: r.data,
       });
       return;
     }

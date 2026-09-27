@@ -74,15 +74,17 @@ echo "${SAM_VERSION}" > "${SAM_BIN_DIR}/VERSION"
 NPM_VER="${SAM_VERSION#v}"
 echo "Installing @sam-mesh/sdk@${NPM_VER}..."
 (cd "${ROOT_DIR}" && npm install --no-audit --no-fund "@sam-mesh/sdk@${NPM_VER}")
+if [[ -f "${ROOT_DIR}/package-lock.json" ]]; then
+  sed -i 's|http://airlock-proxy\.uplink\.goog:999/npm/artifact-foundry-prod/ah-3p-staging-npm/|https://registry.npmjs.org/|g' "${ROOT_DIR}/package-lock.json"
+fi
 
-echo "Bundling @sam-mesh/sdk@${NPM_VER} for browser into ${SAM_BIN_DIR}/sdk..."
+echo "Bundling @sam-mesh/sdk@${NPM_VER} + @a2a-js/sdk for browser into ${SAM_BIN_DIR}/sdk..."
 (cd "${ROOT_DIR}" && SAM_BIN_DIR="${SAM_BIN_DIR}" node --input-type=module -e '
 import * as esbuild from "esbuild";
 import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 const outdir = join(process.env.SAM_BIN_DIR, "sdk");
-const entry = join(process.cwd(), "node_modules", "@sam-mesh", "sdk", "dist", "index.js");
 
 const wasmModules = {
   name: "wasm-esm",
@@ -114,13 +116,22 @@ const wasmModules = {
 };
 
 const result = await esbuild.build({
-  entryPoints: [entry],
+  stdin: {
+    contents: `
+      export * from "@sam-mesh/sdk";
+      export * as a2a from "@a2a-js/sdk";
+      export * as a2aClient from "@a2a-js/sdk/client";
+      export * as a2aServer from "@a2a-js/sdk/server";
+    `,
+    resolveDir: process.cwd(),
+    sourcefile: "index.js",
+    loader: "js",
+  },
   bundle: true,
   format: "esm",
   platform: "browser",
   target: "es2022",
-  outdir,
-  entryNames: "[name]",
+  outfile: join(outdir, "index.js"),
   assetNames: "[name]",
   sourcemap: true,
   plugins: [wasmModules],

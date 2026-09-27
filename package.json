@@ -11,6 +11,7 @@
     "record": "node scripts/record-videos.mjs"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^1.2.1",
     "@sam-mesh/sdk": "^0.1.0-rc.7"
   },
   "devDependencies": {
