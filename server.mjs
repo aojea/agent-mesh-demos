@@ -22,8 +22,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const localSamBin = path.join(__dirname, ".sam-bin", "sam-one");
+const localSamNodeBin = path.join(__dirname, ".sam-bin", "sam-node");
 const SAM_ONE_BIN =
   process.env.SAM_ONE_BIN || (fs.existsSync(localSamBin) ? localSamBin : "sam-one");
+const SAM_NODE_BIN =
+  process.env.SAM_NODE_BIN || (fs.existsSync(localSamNodeBin) ? localSamNodeBin : "sam-node");
 const PORT = Number(process.env.PORT || 4400);
 const ADMIN_TOKEN = process.env.SAM_ADMIN_TOKEN || "demo-admin-secret-token";
 
@@ -94,11 +97,13 @@ for (let i = 0; i < 30; i++) {
   await new Promise((r) => setTimeout(r, 150));
 }
 
-async function enrollAndJoin(token = joinToken) {
-  const mesh = await sdk.AgentMesh.enroll({
+async function enrollAndJoin(token = joinToken, role = undefined) {
+  const opts = {
     controlPlaneUrl: samOneUrl,
     bootstrapToken: token,
-  });
+  };
+  if (role) opts.role = role;
+  const mesh = await sdk.AgentMesh.enroll(opts);
   const session = await mesh.join();
   return { mesh, session };
 }
@@ -131,7 +136,7 @@ async function setMeshPolicy(mode) {
   }
 }
 
-async function mintRoomToken(maxUsages = 4) {
+async function mintBootstrapToken(role = "sam:role:node", maxUsages = 4, description = "Demo Bootstrap Token") {
   const res = await fetch(`${samOneUrl}/admin/bootstrap-tokens`, {
     method: "POST",
     headers: {
@@ -139,10 +144,10 @@ async function mintRoomToken(maxUsages = 4) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      role: "sam:role:node",
+      role,
       max_usages: maxUsages,
       ttl_hours: 1,
-      description: "Incident Response Room QR Token",
+      description,
     }),
   });
   const data = await res.json();
@@ -152,6 +157,7 @@ async function mintRoomToken(maxUsages = 4) {
 // Track active sessions so we never exceed go-libp2p's per-IP relay slot cap (8) on 127.0.0.1.
 let activeDemo = null;
 let activeSessions = [];
+let activePepProc = null;
 
 async function closeActiveSessions() {
   const toClose = activeSessions;
@@ -163,6 +169,11 @@ async function closeActiveSessions() {
       // ignore
     }
   }
+  if (activePepProc && activePepProc.exitCode === null) {
+    activePepProc.kill("SIGTERM");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  activePepProc = null;
 }
 
 // ============================================================================
@@ -186,10 +197,9 @@ async function ensureDemo1() {
   demo1.beta = await enrollAndJoin();
   activeSessions.push(demo1.alpha.session, demo1.beta.session);
 
-  await demo1.alpha.session.serve({
-    type: "a2a",
+  await demo1.alpha.session.acceptA2A({
     name: "planner",
-    target: async (req, caller) => {
+    handler: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         agent: "Agent Alpha (Planner)",
@@ -201,10 +211,9 @@ async function ensureDemo1() {
     },
   });
 
-  await demo1.beta.session.serve({
-    type: "a2a",
+  await demo1.beta.session.acceptA2A({
     name: "auditor",
-    target: async (req, caller) => {
+    handler: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         agent: "Agent Beta (Security Auditor)",
@@ -241,10 +250,9 @@ async function ensureDemo2() {
     demo2.gitAnalyzer.session,
   );
 
-  await demo2.gitAnalyzer.session.serve({
-    type: "a2a",
+  await demo2.gitAnalyzer.session.acceptA2A({
     name: "git-analyzer",
-    target: async (req, caller) => {
+    handler: async (req, caller) => {
       const body = await req.json();
       return Response.json({
         tool: "summarize_diff",
@@ -255,10 +263,9 @@ async function ensureDemo2() {
     },
   });
 
-  await demo2.researcher.session.serve({
-    type: "a2a",
+  await demo2.researcher.session.acceptA2A({
     name: "researcher",
-    target: async (req, caller) => {
+    handler: async (req, caller) => {
       const body = await req.json();
       const hop2Start = performance.now();
       await demo2.researcher.session.connect(demo2.gitAnalyzer.session.peerId);
@@ -289,7 +296,7 @@ async function ensureDemo2() {
 // ============================================================================
 // DEMO 3: "Scan-to-Join" Multi-Agent Collaboration Room
 // ============================================================================
-const roomToken = await mintRoomToken(4);
+const roomToken = await mintBootstrapToken("sam:role:node", 4, "Incident Response Room QR Token");
 const demo3 = {
   roomToken,
   enrollUri: `sam://enroll?server=${encodeURIComponent(samOneUrl)}&token=${encodeURIComponent(roomToken)}`,
@@ -350,10 +357,9 @@ async function ensureDemo4() {
   );
 
   for (const spec of demo4.specialists) {
-    await spec.session.serve({
-      type: "a2a",
+    await spec.session.acceptA2A({
       name: spec.service,
-      target: async (req, caller) => {
+      handler: async (req, caller) => {
         const body = await req.json();
         const findingsBySpec = {
           sec: `Ed25519 PoP verified; Mutual TLS 1.3 + Biscuit attestation confirmed for "${body.proposal}". Verdict: PASS.`,
@@ -373,6 +379,196 @@ async function ensureDemo4() {
   activeDemo = "demo4";
 }
 
+// ============================================================================
+// DEMO 5: Zero-Install Browser Playground
+// ============================================================================
+const browserToken = await mintBootstrapToken("sam:role:node", 10, "Browser Playground Token");
+const demo5 = {
+  samOneUrl,
+  browserToken,
+  enrollUri: `sam://enroll?server=${encodeURIComponent(samOneUrl)}&token=${encodeURIComponent(browserToken)}`,
+};
+
+async function ensureDemo5() {
+  if (activeDemo === "demo5") return;
+  await closeActiveSessions();
+  await setMeshPolicy("allow");
+  activeDemo = "demo5";
+}
+
+// ============================================================================
+// DEMO 6: Egress PEP & Fine-Grained HTTP Method/Path Grants
+// ============================================================================
+const demo6 = {
+  pepPeerId: null,
+  pepTcpAddr: null,
+  pepLabel: "site=eu",
+  secretName: "github-eu",
+  secretPreview: "ghp_eu_sovereign_vault_99a8b7c6",
+  contractor: null,
+  datalogRules: [],
+  requests: [],
+  upstreamLog: [],
+};
+
+const demo6UpstreamServer = http.createServer((req, res) => {
+  const authHeader = req.headers.authorization || "none";
+  const biscuitStripped = req.headers["x-sam-biscuit"] === undefined;
+  const entry = {
+    id: demo6.upstreamLog.length + 1,
+    method: req.method,
+    path: req.url,
+    injectedAuth: authHeader,
+    biscuitStripped,
+    timestamp: new Date().toISOString(),
+  };
+  demo6.upstreamLog.push(entry);
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(
+    JSON.stringify({
+      destination: "api.github.com (EU Sovereign Egress Origin)",
+      method: req.method,
+      path: req.url,
+      injectedCredential: "github-eu (Bearer ghp_eu_sovereign_vault_****)",
+      biscuitStripped,
+      pulls: [
+        {
+          number: 479,
+          repo: "acme/dubbing",
+          title: "docs: egress destinations, HTTP grants and the request facts",
+          state: "open",
+        },
+      ],
+    }),
+  );
+});
+await new Promise((resolve) => demo6UpstreamServer.listen(0, "127.0.0.1", resolve));
+const demo6UpstreamUrl = `http://127.0.0.1:${demo6UpstreamServer.address().port}`;
+
+async function ensureDemo6() {
+  if (activeDemo === "demo6" && demo6.contractor && activePepProc && activePepProc.exitCode === null) {
+    return;
+  }
+  await closeActiveSessions();
+
+  const policyBody = {
+    roles: [
+      { name: "sam-admin", allowed_services: ["*"], allowed_targets: ["*"] },
+      { name: "sam:role:router", allowed_services: ["*"], allowed_targets: ["*"] },
+      {
+        name: "sam:role:node",
+        allowed_services: ["*"],
+        allowed_targets: ["*"],
+        allowed_labels: ["*"],
+      },
+      {
+        name: "contractor",
+        allowed_services: ["egress://api.github.com"],
+        allowed_targets: ["*"],
+        http: [
+          {
+            service: "egress://api.github.com",
+            methods: ["GET"],
+            paths: ["/repos/acme/*"],
+          },
+        ],
+      },
+    ],
+    bindings: [],
+    egress: [
+      {
+        name: "api.github.com",
+        target_url: demo6UpstreamUrl,
+        credential: "github-eu",
+        served_by: ["site=eu"],
+      },
+    ],
+  };
+  const polRes = await fetch(`${samOneUrl}/policies`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(policyBody),
+  });
+  if (!polRes.ok) {
+    throw new Error(`POST /policies failed for demo6: ${polRes.status}`);
+  }
+
+  const pepDir = fs.mkdtempSync(path.join(samOneDataDir, "pep-"));
+  const secretsDir = path.join(pepDir, "secrets");
+  fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(secretsDir, "github-eu"), `${demo6.secretPreview}\n`, { mode: 0o600 });
+  const pepConfig = path.join(pepDir, "pep.yaml");
+  fs.writeFileSync(pepConfig, 'version: "v1alpha1"\nlabels:\n  site: eu\n');
+  const apiTokenPath = path.join(pepDir, "api-token");
+  const pepApiToken = "pep-local-api-token";
+  fs.writeFileSync(apiTokenPath, `${pepApiToken}\n`, { mode: 0o600 });
+  const joinTokenPath = path.join(samOneDataDir, "join-token");
+
+  const pepApiPort = await getFreePort();
+  activePepProc = spawn(
+    SAM_NODE_BIN,
+    [
+      "run",
+      "--control-plane",
+      samOneUrl,
+      "--insecure-control-plane",
+      "--data-dir",
+      path.join(pepDir, "data"),
+      "--api-token-path",
+      apiTokenPath,
+      "--bootstrap-token-path",
+      joinTokenPath,
+      "--bind-addr",
+      `127.0.0.1:${pepApiPort}`,
+      "--listen",
+      "/ip4/127.0.0.1/tcp/0",
+      "--allow-loopback",
+      "--config",
+      pepConfig,
+      "--secrets-dir",
+      secretsDir,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${pepApiPort}/healthz`);
+      if (r.ok) break;
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+
+  const meshInfo = await (
+    await fetch(`http://127.0.0.1:${pepApiPort}/debug/mesh-info`, {
+      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
+    })
+  ).json();
+  const netInfo = await (
+    await fetch(`http://127.0.0.1:${pepApiPort}/debug/network-info`, {
+      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
+    })
+  ).json();
+  demo6.pepPeerId = meshInfo.peer_id;
+  const tcpListen = netInfo.listen_addresses.find((a) => a.includes("/tcp/"));
+  demo6.pepTcpAddr = `${tcpListen}/p2p/${demo6.pepPeerId}`;
+
+  const contractorToken = await mintBootstrapToken("contractor", 10, "Contractor Egress Token");
+  demo6.contractor = await enrollAndJoin(contractorToken, "contractor");
+  activeSessions.push(demo6.contractor.session);
+  await demo6.contractor.session.syncPolicy();
+  demo6.datalogRules = demo6.contractor.session.policyRules;
+  await demo6.contractor.session.connect(demo6.pepTcpAddr);
+
+  activeDemo = "demo6";
+}
+
 // Start with Demo 1 active
 await ensureDemo1();
 
@@ -390,6 +586,14 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+function resolveBrowserSdkAsset(filename) {
+  const publicCandidate = path.join(__dirname, "public", "sdk", filename);
+  if (fs.existsSync(publicCandidate)) return publicCandidate;
+  const samBinCandidate = path.join(__dirname, ".sam-bin", "sdk", filename);
+  if (fs.existsSync(samBinCandidate)) return samBinCandidate;
+  return path.join(__dirname, "..", "sam", "sdk", "js", "build", "browser", filename);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
@@ -397,6 +601,30 @@ const server = http.createServer(async (req, res) => {
       const html = fs.readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(html);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/sdk/index.js") {
+      try {
+        const content = fs.readFileSync(resolveBrowserSdkAsset("index.js"), "utf8");
+        res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+        res.end(content);
+      } catch (err) {
+        res.writeHead(500);
+        res.end(`Failed to load SDK bundle: ${err.message}`);
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/sdk/biscuit_bg.wasm") {
+      try {
+        const content = fs.readFileSync(resolveBrowserSdkAsset("biscuit_bg.wasm"));
+        res.writeHead(200, { "Content-Type": "application/wasm" });
+        res.end(content);
+      } catch (err) {
+        res.writeHead(500);
+        res.end(`Failed to load WASM: ${err.message}`);
+      }
       return;
     }
 
@@ -579,10 +807,9 @@ const server = http.createServer(async (req, res) => {
         const enrolled = await enrollAndJoin(demo3.roomToken);
         activeSessions.push(enrolled.session);
         const memberIndex = demo3.members.length;
-        await enrolled.session.serve({
-          type: "a2a",
+        await enrolled.session.acceptA2A({
           name: "room",
-          target: async (reqMsg, caller) => {
+          handler: async (reqMsg, caller) => {
             const body = await reqMsg.json();
             return Response.json({
               member: name,
@@ -705,6 +932,75 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ---- DEMO 5 ENDPOINTS ----
+    if (req.method === "GET" && url.pathname === "/api/demo5/state") {
+      await ensureDemo5();
+      sendJson(res, 200, {
+        samOneUrl: demo5.samOneUrl,
+        browserToken: demo5.browserToken,
+        enrollUri: demo5.enrollUri,
+      });
+      return;
+    }
+
+    // ---- DEMO 6 ENDPOINTS ----
+    if (req.method === "GET" && url.pathname === "/api/demo6/state") {
+      await ensureDemo6();
+      sendJson(res, 200, {
+        pepPeerId: demo6.pepPeerId,
+        pepLabel: demo6.pepLabel,
+        secretName: demo6.secretName,
+        contractorPeerId: demo6.contractor.session.peerId,
+        contractorRole: "contractor",
+        datalogRules: demo6.datalogRules,
+        requests: demo6.requests,
+        upstreamLog: demo6.upstreamLog,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/demo6/request") {
+      await ensureDemo6();
+      const { method = "GET", path: reqPath = "/repos/acme/dubbing/pulls?state=open" } = await readJson(req);
+      const t0 = performance.now();
+      await demo6.contractor.session.connect(demo6.pepTcpAddr);
+      const r = await demo6.contractor.session.request(
+        demo6.pepPeerId,
+        "egress://api.github.com",
+        reqPath,
+        { method },
+      );
+      const latencyMs = Math.max(1, Math.round(performance.now() - t0));
+      const cleanPath = reqPath.split("?")[0];
+      let parsedBody;
+      try {
+        parsedBody = JSON.parse(r.text());
+      } catch {
+        parsedBody = { message: r.text().trim() };
+      }
+      const entry = {
+        id: demo6.requests.length + 1,
+        method,
+        path: reqPath,
+        status: r.status,
+        latencyMs,
+        proxyStatus: r.headers["proxy-status"] || null,
+        facts: [
+          `service("egress", "api.github.com")`,
+          `method("${method}")`,
+          `path("${cleanPath}")`,
+          `host("api.github.com")`,
+        ],
+        response: parsedBody,
+      };
+      demo6.requests.push(entry);
+      sendJson(res, 200, {
+        entry,
+        upstreamLog: demo6.upstreamLog,
+      });
+      return;
+    }
+
     sendJson(res, 404, { error: "Not found" });
   } catch (err) {
     sendJson(res, 500, { error: err.message });
@@ -718,6 +1014,7 @@ server.listen(PORT, "127.0.0.1", () => {
 async function shutdown() {
   await closeActiveSessions();
   server.close();
+  demo6UpstreamServer.close();
   if (samOneProc && samOneProc.exitCode === null) {
     samOneProc.kill("SIGTERM");
   }

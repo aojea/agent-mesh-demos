@@ -18,7 +18,7 @@
 #
 # Parameters (environment variables):
 #   SAM_REPO     GitHub repository (default: google/sam)
-#   SAM_VERSION  Release tag, e.g. v0.1.0-rc.6 or "latest" (default: latest)
+#   SAM_VERSION  Release tag, e.g. v0.1.0-rc.7 or "latest" (default: latest)
 #   SAM_BIN_DIR  Where to place sam-one (default: ./.sam-bin)
 
 set -euo pipefail
@@ -60,15 +60,81 @@ mkdir -p "${SAM_BIN_DIR}"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-echo "Downloading sam-one (${SAM_VERSION}) from ${DOWNLOAD_URL}..."
+echo "Downloading sam-one and sam-node (${SAM_VERSION}) from ${DOWNLOAD_URL}..."
 curl -fsSL -o "${TMP_DIR}/${TAR_NAME}" "${DOWNLOAD_URL}"
 tar -xzf "${TMP_DIR}/${TAR_NAME}" -C "${TMP_DIR}"
 mv "${TMP_DIR}/sam-one" "${SAM_BIN_DIR}/sam-one"
 chmod +x "${SAM_BIN_DIR}/sam-one"
+if [[ -f "${TMP_DIR}/sam-node" ]]; then
+  mv "${TMP_DIR}/sam-node" "${SAM_BIN_DIR}/sam-node"
+  chmod +x "${SAM_BIN_DIR}/sam-node"
+fi
 echo "${SAM_VERSION}" > "${SAM_BIN_DIR}/VERSION"
 
 NPM_VER="${SAM_VERSION#v}"
 echo "Installing @sam-mesh/sdk@${NPM_VER}..."
 (cd "${ROOT_DIR}" && npm install --no-audit --no-fund "@sam-mesh/sdk@${NPM_VER}")
 
-echo "Ready: sam-one (${SAM_VERSION}) at ${SAM_BIN_DIR}/sam-one and @sam-mesh/sdk@${NPM_VER}"
+echo "Bundling @sam-mesh/sdk@${NPM_VER} for browser into ${SAM_BIN_DIR}/sdk..."
+(cd "${ROOT_DIR}" && SAM_BIN_DIR="${SAM_BIN_DIR}" node --input-type=module -e '
+import * as esbuild from "esbuild";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+
+const outdir = join(process.env.SAM_BIN_DIR, "sdk");
+const entry = join(process.cwd(), "node_modules", "@sam-mesh", "sdk", "dist", "index.js");
+
+const wasmModules = {
+  name: "wasm-esm",
+  setup(build) {
+    build.onResolve({ filter: /\.wasm$/ }, (args) => ({ path: join(args.resolveDir, args.path), namespace: "wasm-esm" }));
+    build.onLoad({ filter: /.*/, namespace: "wasm-esm" }, async (args) => {
+      const bytes = await readFile(args.path);
+      const module = new WebAssembly.Module(bytes);
+      const importModules = [...new Set(WebAssembly.Module.imports(module).map((imp) => imp.module))];
+      const exports = WebAssembly.Module.exports(module).map((exp) => exp.name);
+      const lines = [];
+      const imports = [];
+      importModules.forEach((mod, i) => {
+        if (mod.startsWith("./") || mod.startsWith("../")) {
+          lines.push(`import * as m${i} from ${JSON.stringify(mod)};`);
+          imports.push(`${JSON.stringify(mod)}: m${i}`);
+        } else {
+          imports.push(`${JSON.stringify(mod)}: { performance_now: () => performance.now() }`);
+        }
+      });
+      lines.push(`const url = new URL(${JSON.stringify(basename(args.path))}, import.meta.url);`);
+      lines.push(`const { instance } = await WebAssembly.instantiateStreaming(fetch(url), { ${imports.join(", ")} });`);
+      for (const name of exports) {
+        lines.push(`export const ${name} = instance.exports[${JSON.stringify(name)}];`);
+      }
+      return { contents: lines.join("\n"), loader: "js", resolveDir: dirname(args.path), watchFiles: [args.path] };
+    });
+  },
+};
+
+const result = await esbuild.build({
+  entryPoints: [entry],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2022",
+  outdir,
+  entryNames: "[name]",
+  assetNames: "[name]",
+  sourcemap: true,
+  plugins: [wasmModules],
+  metafile: true,
+  logLevel: "error",
+});
+
+await mkdir(outdir, { recursive: true });
+for (const input of Object.keys(result.metafile.inputs)) {
+  if (input.startsWith("wasm-esm:")) {
+    const file = input.slice("wasm-esm:".length);
+    await copyFile(file, join(outdir, basename(file)));
+  }
+}
+')
+
+echo "Ready: sam-one & sam-node (${SAM_VERSION}) at ${SAM_BIN_DIR} and @sam-mesh/sdk@${NPM_VER}"

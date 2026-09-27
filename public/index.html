@@ -318,6 +318,8 @@
       <button id="tab-demo2" class="tab-btn" onclick="switchTab('demo2')">2. Polyglot Hop Tracer</button>
       <button id="tab-demo3" class="tab-btn" onclick="switchTab('demo3')">3. QR Multi-Agent Room</button>
       <button id="tab-demo4" class="tab-btn" onclick="switchTab('demo4')">4. Federated Specialist Swarm</button>
+      <button id="tab-demo5" class="tab-btn" onclick="switchTab('demo5')">5. Browser Playground</button>
+      <button id="tab-demo6" class="tab-btn" onclick="switchTab('demo6')">6. Egress PEP &amp; HTTP Grants</button>
     </nav>
     <div class="mesh-pill">
       <span class="dot"></span>
@@ -534,11 +536,118 @@
         <div id="d4-verdict" style="margin-top: 14px;"></div>
       </div>
     </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 5: Zero-Install Browser Playground                            -->
+    <!-- ================================================================== -->
+    <section id="panel-demo5" class="demo-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Zero-Install Browser Playground</h2>
+          <span id="d5-status-badge" class="badge badge-amber">Disconnected</span>
+        </div>
+        <div class="kv-label">Enrollment URL / Parameters</div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="d5-enroll-url" type="text" placeholder="sam://enroll?server=http://127.0.0.1:PORT&token=SECRET" style="margin-bottom:0; flex:1;" />
+          <button id="d5-parse-btn" class="btn btn-primary" onclick="demo5ParseUrl()">Parse</button>
+        </div>
+        
+        <div class="grid-2" style="margin-top: 15px;">
+          <div>
+            <div class="kv-label">Control Plane URL</div>
+            <input id="d5-cp-url" type="text" placeholder="http://127.0.0.1:PORT" />
+            <div class="kv-label">Bootstrap Token</div>
+            <input id="d5-token" type="text" placeholder="secret-token" oninput="if(this.value) document.getElementById('d5-jwt').value=''" />
+            <div class="kv-label">JWT / OIDC Token</div>
+            <input id="d5-jwt" type="text" placeholder="eyJ..." oninput="if(this.value) document.getElementById('d5-token').value=''" />
+            <div class="kv-label">Agent Name</div>
+            <input id="d5-agent-name" type="text" value="Browser Agent" />
+            
+            <div class="btn-row" style="margin-top: 15px;">
+              <button id="d5-join-btn" class="btn btn-emerald" onclick="demo5Join()">Enroll &amp; Join Mesh</button>
+              <button id="d5-leave-btn" class="btn btn-rose" onclick="demo5Leave()" style="display:none;">Leave Mesh</button>
+            </div>
+          </div>
+          
+          <div>
+            <div class="kv-label">Browser Agent Peer ID</div>
+            <div id="d5-peer-id" class="peer-box">Not Joined</div>
+            <div class="kv-label">Live Console Log</div>
+            <div id="d5-console" class="event-list" style="height: 180px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 6: Egress PEP & Fine-Grained HTTP Method/Path Grants          -->
+    <!-- ================================================================== -->
+    <section id="panel-demo6" class="demo-panel">
+      <div class="grid-3">
+        <!-- Left: Contractor Agent -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Contractor Agent (Caller)</h2>
+            <span class="badge badge-cyan">role("contractor")</span>
+          </div>
+          <div class="kv-label">Contractor Peer ID (Holds Zero Upstream Secrets)</div>
+          <div id="d6-contractor-peer" class="peer-box">Loading...</div>
+          <div class="kv-label">Narrowed HTTP Grant (<code>roles[].http</code>)</div>
+          <pre class="code-box">service: "egress://api.github.com"
+methods: ["GET"]
+paths:   ["/repos/acme/*"]</pre>
+
+          <div class="kv-label" style="margin-top: 10px;">Test Egress Requests Through PEP</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button id="d6-btn-allow" class="btn btn-emerald" onclick="demo6Send('GET', '/repos/acme/dubbing/pulls?state=open')">
+              1. GET /repos/acme/dubbing/pulls (Allowed)
+            </button>
+            <button id="d6-btn-deny-method" class="btn btn-amber" onclick="demo6Send('POST', '/repos/acme/dubbing/pulls')">
+              2. POST /repos/acme/dubbing/pulls (Method Denied)
+            </button>
+            <button id="d6-btn-deny-path" class="btn btn-rose" onclick="demo6Send('GET', '/user/keys')">
+              3. GET /user/keys (Path Outside /repos/acme/*)
+            </button>
+          </div>
+        </div>
+
+        <!-- Center: sam-node Egress PEP -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Sovereign Egress PEP (<code>sam-node</code>)</h2>
+            <span id="d6-pep-badge" class="badge badge-emerald">egress://api.github.com</span>
+          </div>
+          <div class="kv-label">PEP Node Peer ID &amp; Attested Label (<code>served_by: ["site=eu"]</code>)</div>
+          <div id="d6-pep-peer" class="peer-box" style="color: var(--emerald);">Loading...</div>
+          <div class="kv-label">Platform-Delivered Vault Credential (<code>--secrets-dir</code>)</div>
+          <div id="d6-secret-info" class="peer-box" style="color: var(--amber);">github-eu &rarr; Bearer ghp_eu_sovereign_vault_****</div>
+
+          <div class="kv-label">Compiled Datalog HTTP Narrowing Rules</div>
+          <pre id="d6-datalog-rules" class="code-box">Loading...</pre>
+
+          <div class="kv-label" style="margin-top: 10px;">Wire Request Facts &amp; PEP Decisions</div>
+          <div id="d6-requests" class="event-list"></div>
+        </div>
+
+        <!-- Right: Upstream Origin (api.github.com) -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Destination Origin (<code>api.github.com</code>)</h2>
+            <span id="d6-upstream-count" class="badge badge-cyan">0 Requests Seen</span>
+          </div>
+          <div class="kv-label">What the External Destination Actually Sees</div>
+          <div style="font-size: 12px; color: var(--muted); margin-bottom: 10px;">
+            <code>X-Sam-Biscuit</code> is stripped at the PEP boundary and replaced with the PEP host's <code>github-eu</code> credential. Denied calls never touch the destination.
+          </div>
+          <div id="d6-upstream-log" class="event-list" style="max-height: 360px;"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
     async function switchTab(name) {
-      for (const id of ['demo1', 'demo2', 'demo3', 'demo4']) {
+      for (const id of ['demo1', 'demo2', 'demo3', 'demo4', 'demo5', 'demo6']) {
         document.getElementById('tab-' + id).classList.toggle('active', id === name);
         document.getElementById('panel-' + id).classList.toggle('active', id === name);
       }
@@ -546,6 +655,8 @@
       if (name === 'demo2') await loadDemo2();
       if (name === 'demo3') await loadDemo3();
       if (name === 'demo4') await loadDemo4();
+      if (name === 'demo5') await loadDemo5();
+      if (name === 'demo6') await loadDemo6();
     }
 
     // ---- DEMO 1 ----
@@ -774,7 +885,205 @@
       await loadDemo4();
     }
 
-    loadDemo1();
+    // ---- DEMO 5 ----
+    let browserMesh = null;
+    let browserSession = null;
+
+    function d5Log(msg, type = 'ok') {
+      const consoleEl = document.getElementById('d5-console');
+      const item = document.createElement('div');
+      item.className = `event-item ${type}`;
+      item.innerHTML = `<div class="event-meta"><span>BROWSER SDK</span></div><div>${msg}</div>`;
+      consoleEl.appendChild(item);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function demo5ParseUrl() {
+      const urlStr = document.getElementById('d5-enroll-url').value.trim();
+      try {
+        const url = new URL(urlStr);
+        if (url.protocol !== 'sam:') {
+          throw new Error('Invalid protocol, expected sam://');
+        }
+        const cpUrl = url.searchParams.get('server');
+        const token = url.searchParams.get('token');
+        const jwt = url.searchParams.get('jwt');
+        if (cpUrl) document.getElementById('d5-cp-url').value = cpUrl;
+        if (token) {
+          document.getElementById('d5-token').value = token;
+          document.getElementById('d5-jwt').value = '';
+        }
+        if (jwt) {
+          document.getElementById('d5-jwt').value = jwt;
+          document.getElementById('d5-token').value = '';
+        }
+        d5Log(`Parsed enrollment URL for ${cpUrl}`);
+      } catch (err) {
+        d5Log(`Failed to parse URL: ${err.message}`, 'banned');
+      }
+    }
+
+    async function loadDemo5() {
+      const params = new URLSearchParams(window.location.search);
+      const qEnroll = params.get('enroll');
+      const qServer = params.get('server');
+      const qToken = params.get('token');
+      const qJwt = params.get('jwt');
+      if (qEnroll) {
+        document.getElementById('d5-enroll-url').value = qEnroll;
+        demo5ParseUrl();
+        return;
+      }
+      if (qServer) {
+        document.getElementById('d5-cp-url').value = qServer;
+        if (qToken) document.getElementById('d5-token').value = qToken;
+        if (qJwt) document.getElementById('d5-jwt').value = qJwt;
+        return;
+      }
+      try {
+        const r = await fetch('/api/demo5/state');
+        if (r.ok) {
+          const s = await r.json();
+          if (!document.getElementById('d5-enroll-url').value && s.enrollUri) {
+            document.getElementById('d5-enroll-url').value = s.enrollUri;
+          }
+          if (!document.getElementById('d5-cp-url').value && s.samOneUrl) {
+            document.getElementById('d5-cp-url').value = s.samOneUrl;
+          }
+          if (!document.getElementById('d5-token').value && !document.getElementById('d5-jwt').value && s.browserToken) {
+            document.getElementById('d5-token').value = s.browserToken;
+          }
+        }
+      } catch {
+        // Running as static page on GitHub Pages without local backend
+      }
+    }
+
+    async function demo5Join() {
+      const cpUrl = document.getElementById('d5-cp-url').value.trim();
+      const token = document.getElementById('d5-token').value.trim();
+      const jwt = document.getElementById('d5-jwt').value.trim();
+      const name = document.getElementById('d5-agent-name').value.trim() || 'browser-agent';
+
+      if (!cpUrl || (!token && !jwt)) {
+        d5Log('Control Plane URL and either Bootstrap Token or OIDC JWT are required', 'banned');
+        return;
+      }
+
+      const statusBadge = document.getElementById('d5-status-badge');
+      statusBadge.className = 'badge badge-amber';
+      statusBadge.textContent = 'Enrolling...';
+
+      try {
+        d5Log('Loading @sam-mesh/sdk browser bundle (WebAssembly Biscuit + WebSocket libp2p)...');
+        const sdk = await import('./sdk/index.js');
+
+        d5Log(`Enrolling browser identity with ${cpUrl}...`);
+        const enrollOptions = { controlPlaneUrl: cpUrl };
+        if (token) enrollOptions.bootstrapToken = token;
+        if (jwt) enrollOptions.jwt = jwt;
+
+        browserMesh = await sdk.AgentMesh.enroll(enrollOptions);
+        d5Log(`Enrolled with Ed25519 Peer ID: ${browserMesh.peerId}`);
+
+        statusBadge.textContent = 'Joining...';
+        browserSession = await browserMesh.join();
+        d5Log('Joined mesh over WebSocket relay and reserved circuit slot.');
+
+        document.getElementById('d5-peer-id').textContent = browserSession.peerId;
+        statusBadge.className = 'badge badge-emerald';
+        statusBadge.textContent = 'Connected';
+
+        document.getElementById('d5-join-btn').style.display = 'none';
+        document.getElementById('d5-leave-btn').style.display = 'inline-block';
+
+        const svcName = name.toLowerCase().replace(/\s+/g, '-');
+        await browserSession.acceptA2A({
+          name: svcName,
+          handler: async (req, caller) => {
+            const body = await req.json();
+            d5Log(`Accepted A2A request from verified peer ${caller.peerId}`);
+            return Response.json({
+              reply: `Browser Agent ${name} received: "${body.text || body.directive || 'Ping'}"`,
+            });
+          },
+        });
+        d5Log(`Serving a2a://${svcName} directly from this browser tab.`);
+      } catch (err) {
+        d5Log(`Error: ${err.message}`, 'banned');
+        statusBadge.className = 'badge badge-rose';
+        statusBadge.textContent = 'Error';
+      }
+    }
+
+    async function demo5Leave() {
+      if (browserSession) {
+        await browserSession.close();
+        browserSession = null;
+        browserMesh = null;
+        d5Log('Left mesh.');
+      }
+      document.getElementById('d5-status-badge').className = 'badge badge-amber';
+      document.getElementById('d5-status-badge').textContent = 'Disconnected';
+      document.getElementById('d5-peer-id').textContent = 'Not Joined';
+      document.getElementById('d5-join-btn').style.display = 'inline-block';
+      document.getElementById('d5-leave-btn').style.display = 'none';
+    }
+
+    // ---- DEMO 6 ----
+    async function loadDemo6() {
+      const r = await fetch('/api/demo6/state');
+      const s = await r.json();
+      document.getElementById('d6-contractor-peer').textContent = s.contractorPeerId;
+      document.getElementById('d6-pep-peer').textContent = `${s.pepPeerId} (${s.pepLabel})`;
+      document.getElementById('d6-datalog-rules').textContent = (s.datalogRules || []).join('\n');
+      document.getElementById('d6-upstream-count').textContent = `${s.upstreamLog.length} Requests Seen`;
+
+      document.getElementById('d6-requests').innerHTML = s.requests.slice().reverse().map(req => {
+        const ok = req.status === 200;
+        return `<div class="event-item ${ok ? 'ok' : 'denied'}" data-status="${req.status}" data-method="${req.method}">
+          <div class="event-meta">
+            <span>HTTP ${req.status} &bull; ${req.method} ${req.path}</span>
+            <span>${req.latencyMs} ms</span>
+          </div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan); margin:3px 0;">
+            Injected Wire Facts: ${req.facts.join(', ')}
+          </div>
+          ${ok
+            ? `<div style="color:var(--emerald); font-size:12px;">PEP authorized request, stripped <code>X-Sam-Biscuit</code>, injected <code>github-eu</code> secret, and returned PR #${req.response.pulls?.[0]?.number}.</div>`
+            : `<div style="color:var(--amber); font-size:12px;">PEP Datalog Authorizer Refused: <code>${req.proxyStatus || 'http_request_denied'}</code> (${req.response.message})</div>`
+          }
+        </div>`;
+      }).join('');
+
+      document.getElementById('d6-upstream-log').innerHTML = s.upstreamLog.slice().reverse().map(u => `
+        <div class="event-item ok" data-upstream-id="${u.id}">
+          <div class="event-meta">
+            <span>Origin Request #${u.id} &bull; ${u.method} ${u.path}</span>
+            <span>Biscuit Stripped: ${u.biscuitStripped ? 'YES' : 'NO'}</span>
+          </div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--emerald);">
+            Authorization: ${u.injectedAuth}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function demo6Send(method, path) {
+      await fetch('/api/demo6/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method, path }),
+      });
+      await loadDemo6();
+    }
+
+    const initParams = new URLSearchParams(window.location.search);
+    if (initParams.get('demo') === 'demo5' || initParams.get('enroll') || initParams.get('server')) {
+      switchTab('demo5');
+    } else {
+      loadDemo1();
+    }
   </script>
 </body>
 </html>

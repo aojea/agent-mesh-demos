@@ -109,6 +109,9 @@ const childEnv = {
 if (SAM_ROOT && !childEnv.SAM_ONE_BIN) {
   childEnv.SAM_ONE_BIN = path.join(SAM_ROOT, "bin", "sam-one");
 }
+if (SAM_ROOT && !childEnv.SAM_NODE_BIN) {
+  childEnv.SAM_NODE_BIN = path.join(SAM_ROOT, "bin", "sam-node");
+}
 if (SAM_ROOT && !childEnv.SAM_SDK_DIST) {
   childEnv.SAM_SDK_DIST = path.join(SAM_ROOT, "sdk", "js", "dist", "index.js");
 }
@@ -215,9 +218,41 @@ try {
     await pause(1800);
   });
 
+  // 5. Zero-Install Browser Playground
+  await recordScenario(browser, "demo-browser-playground", async (page) => {
+    await page.goto(DEMO_URL);
+    await page.click("#tab-demo5");
+    await pause(1000);
+
+    await page.click("#d5-parse-btn");
+    await pause(600);
+    await page.click("#d5-join-btn");
+    await pause(2000);
+
+    await page.click("#d5-leave-btn");
+    await pause(1000);
+  });
+
+  // 6. Egress PEP & HTTP Grants
+  await recordScenario(browser, "demo-egress-pep", async (page) => {
+    await page.goto(DEMO_URL);
+    await page.click("#tab-demo6");
+    await pause(1500);
+
+    await page.click("#d6-btn-allow");
+    await pause(1400);
+
+    await page.click("#d6-btn-deny-method");
+    await pause(1400);
+
+    await page.click("#d6-btn-deny-path");
+    await pause(1600);
+  });
+
   await browser.close();
 } finally {
   if (serverProc && serverProc.exitCode === null) {
     serverProc.kill("SIGTERM");
   }
 }
+

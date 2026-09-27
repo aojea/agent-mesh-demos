@@ -80,3 +80,42 @@ test("4. Federated Specialist Swarm: concurrent A2A fan-out across 3 mesh specia
   await page.click("#d4-fanout-btn");
   await expect(page.locator('#d4-verdict .event-item[data-verdict="approved"]')).toContainText("APPROVED (3/3 verified mesh specialists passed");
 });
+
+test("5. Zero-Install Browser Playground: in-browser WebAssembly Biscuit + WebSocket libp2p enrollment and URL parameterization", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#tab-demo5");
+  await expect(page.locator("#d5-enroll-url")).toHaveValue(/^sam:\/\/enroll\?server=/);
+
+  await page.click("#d5-parse-btn");
+  await page.click("#d5-join-btn");
+  await expect(page.locator("#d5-peer-id")).toHaveText(/^12D3KooW/, { timeout: 15000 });
+  await expect(page.locator("#d5-status-badge")).toHaveText("Connected");
+
+  await page.click("#d5-leave-btn");
+  await expect(page.locator("#d5-status-badge")).toHaveText("Disconnected");
+});
+
+test("6. Egress PEP & HTTP Grants: sam-node egress gateway, method/path Datalog narrowing, and secret injection", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#tab-demo6");
+  await expect(page.locator("#d6-contractor-peer")).toHaveText(/^12D3KooW/, { timeout: 15000 });
+  await expect(page.locator("#d6-pep-peer")).toContainText("site=eu");
+
+  // 1. Allowed GET /repos/acme/dubbing/pulls?state=open -> 200 OK, Biscuit stripped, secret injected
+  await page.click("#d6-btn-allow");
+  await expect(page.locator('#d6-requests .event-item[data-status="200"]')).toContainText("injected github-eu secret");
+  await expect(page.locator("#d6-upstream-count")).toHaveText("1 Requests Seen");
+  await expect(page.locator("#d6-upstream-log .event-item").first()).toContainText("Biscuit Stripped: YES");
+
+  // 2. Denied POST /repos/acme/dubbing/pulls -> 403 Forbidden (method not in ["GET"])
+  await page.click("#d6-btn-deny-method");
+  await expect(page.locator('#d6-requests .event-item[data-status="403"][data-method="POST"]')).toContainText("http_request_denied");
+
+  // 3. Denied GET /user/keys -> 403 Forbidden (path outside /repos/acme/*)
+  await page.click("#d6-btn-deny-path");
+  await expect(page.locator('#d6-requests .event-item[data-status="403"]')).toHaveCount(2);
+
+  // Denied calls never touch the upstream destination
+  await expect(page.locator("#d6-upstream-count")).toHaveText("1 Requests Seen");
+});
+
