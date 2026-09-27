@@ -40,11 +40,6 @@ jobs:
           cp .sam-bin/sdk/index.js public/sdk/
           cp .sam-bin/sdk/biscuit_bg.wasm public/sdk/
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          static_site_generator: none
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

@@ -73,10 +73,7 @@ echo "${SAM_VERSION}" > "${SAM_BIN_DIR}/VERSION"
 
 NPM_VER="${SAM_VERSION#v}"
 echo "Installing @sam-mesh/sdk@${NPM_VER}..."
-(cd "${ROOT_DIR}" && npm install --no-audit --no-fund "@sam-mesh/sdk@${NPM_VER}")
-if [[ -f "${ROOT_DIR}/package-lock.json" ]]; then
-  sed -i 's|http://airlock-proxy\.uplink\.goog:999/npm/artifact-foundry-prod/ah-3p-staging-npm/|https://registry.npmjs.org/|g' "${ROOT_DIR}/package-lock.json"
-fi
+(cd "${ROOT_DIR}" && npm install --registry=https://registry.npmjs.org --no-audit --no-fund "@sam-mesh/sdk@${NPM_VER}")
 
 echo "Bundling @sam-mesh/sdk@${NPM_VER} + @a2a-js/sdk for browser into ${SAM_BIN_DIR}/sdk..."
 (cd "${ROOT_DIR}" && SAM_BIN_DIR="${SAM_BIN_DIR}" node --input-type=module -e '
