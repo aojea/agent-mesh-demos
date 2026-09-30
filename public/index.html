@@ -305,25 +305,93 @@
       gap: 14px;
       margin-top: 14px;
     }
+    .sr-tabs {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: auto;
+    }
+    .chat-shell {
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .chat-thread {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 430px;
+      overflow-y: auto;
+      padding: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .chat-bubble {
+      max-width: 82%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .chat-bubble.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #ffffff;
+      border-bottom-right-radius: 3px;
+    }
+    .chat-bubble.assistant {
+      align-self: flex-start;
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-bottom-left-radius: 3px;
+    }
+    .chat-meta {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      opacity: 0.75;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <span class="brand-badge">SAM MESH</span>
-      <h1>Interactive Agent Mesh Demos &mdash; <code>@sam-mesh/sdk</code> + <code>sam-one</code></h1>
+      <h1 id="active-demo-title">SAM Mesh Demos &mdash; Zero-Trust Two-Agent Playground</h1>
     </div>
-    <nav class="tabs">
-      <button id="tab-demo1" class="tab-btn active" onclick="switchTab('demo1')">1. Zero-Trust Two-Agent Playground</button>
-      <button id="tab-demo2" class="tab-btn" onclick="switchTab('demo2')">2. Polyglot Hop Tracer</button>
-      <button id="tab-demo3" class="tab-btn" onclick="switchTab('demo3')">3. QR Multi-Agent Room</button>
-      <button id="tab-demo4" class="tab-btn" onclick="switchTab('demo4')">4. Federated Specialist Swarm</button>
-      <button id="tab-demo5" class="tab-btn" onclick="switchTab('demo5')">5. Browser Playground</button>
-      <button id="tab-demo6" class="tab-btn" onclick="switchTab('demo6')">6. Egress PEP &amp; HTTP Grants</button>
+    <nav class="sr-tabs" aria-hidden="true">
+      <button id="tab-demo1" class="tab-btn active" onclick="switchTab('demo1')">1</button>
+      <button id="tab-demo2" class="tab-btn" onclick="switchTab('demo2')">2</button>
+      <button id="tab-demo3" class="tab-btn" onclick="switchTab('demo3')">3</button>
+      <button id="tab-demo4" class="tab-btn" onclick="switchTab('demo4')">4</button>
+      <button id="tab-demo5" class="tab-btn" onclick="switchTab('demo5')">5</button>
+      <button id="tab-demo6" class="tab-btn" onclick="switchTab('demo6')">6</button>
+      <button id="tab-demo7" class="tab-btn" onclick="switchTab('demo7')">7</button>
     </nav>
-    <div class="mesh-pill">
-      <span class="dot"></span>
-      <span id="header-status">sam-one WebSocket Relay Active</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <select id="demo-switcher" onchange="switchTab(this.value)" style="background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:12.5px; font-weight:600; cursor:pointer;">
+        <option value="demo1">Demo 1: Zero-Trust Two-Agent Playground</option>
+        <option value="demo2">Demo 2: Polyglot Hop Tracer</option>
+        <option value="demo3">Demo 3: QR Multi-Agent Room</option>
+        <option value="demo4">Demo 4: Federated Specialist Swarm</option>
+        <option value="demo5">Demo 5: Browser Gemini Chat (Cloudflare / WSS)</option>
+        <option value="demo6">Demo 6: Egress PEP &amp; HTTP Grants</option>
+        <option value="demo7">Demo 7: AI Incident War Room</option>
+      </select>
+      <div class="mesh-pill">
+        <span class="dot"></span>
+        <span id="header-status">sam-one WebSocket Relay Active</span>
+      </div>
     </div>
   </header>
 
@@ -369,6 +437,7 @@
             <button id="d1-btn-deny" class="btn btn-amber" onclick="demo1SetPolicy('deny')">Restrict Datalog (Deny A2A)</button>
             <button id="d1-btn-allow" class="btn btn-emerald" onclick="demo1SetPolicy('allow')">Restore Datalog (Allow A2A)</button>
             <button id="d1-btn-ban" class="btn btn-rose" onclick="demo1BanBeta()">Revoke Beta (GossipSub Ban)</button>
+            <button id="d1-btn-reset" class="btn btn-primary" onclick="demo1Reset()" style="display:none;">Re-Enroll Beta</button>
           </div>
 
           <div class="kv-label" style="margin-top: 12px;">Live /libp2p-http Stream &amp; Authorization Trace</div>
@@ -538,42 +607,101 @@
     </section>
 
     <!-- ================================================================== -->
-    <!-- DEMO 5: Zero-Install Browser Playground                            -->
+    <!-- DEMO 5: Browser Gemini Chat (Cloudflare Tunnel / WebSocket Relay)  -->
     <!-- ================================================================== -->
     <section id="panel-demo5" class="demo-panel">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Zero-Install Browser Playground</h2>
-          <span id="d5-status-badge" class="badge badge-amber">Disconnected</span>
+      <div class="chat-shell">
+        <div class="card">
+          <div class="card-header" style="margin-bottom: 10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h2 class="card-title">SAM Mesh Browser Chat</h2>
+              <span id="d5-tunnel-badge" class="badge badge-cyan">Cloudflare WSS / WebSocket Relay</span>
+              <span id="d5-peer-id" style="font-family:var(--mono); font-size:11px; color:var(--emerald);">Not Joined</span>
+            </div>
+            <span id="d5-status-badge" class="badge badge-amber">Disconnected</span>
+          </div>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="d5-enroll-url" type="text" placeholder="sam://enroll?server=https://...trycloudflare.com&token=..." style="margin-bottom:0; flex:1;" />
+            <button id="d5-parse-btn" class="btn btn-primary" onclick="demo5ParseUrl()" style="padding:8px 12px;">Parse</button>
+            <button id="d5-join-btn" class="btn btn-emerald" onclick="demo5Join()">Connect to Mesh</button>
+            <button id="d5-leave-btn" class="btn btn-rose" onclick="demo5Leave()" style="display:none;">Disconnect</button>
+            <button id="d5-discover-btn" class="btn btn-amber" onclick="demo5Discover()" style="padding:8px 12px;">Discover</button>
+          </div>
+          <div id="d5-discovered-list" class="btn-row" style="margin-top: 8px;"></div>
+
+          <details id="d5-advanced-details" style="margin-top: 8px;">
+            <summary style="cursor:pointer; font-size:11.5px; color:var(--muted); user-select:none;">
+              Mesh Connection Settings, Peer Routing &amp; SDK Logs
+            </summary>
+            <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+              <div>
+                <div class="kv-label">Control Plane URL</div>
+                <input id="d5-cp-url" type="text" placeholder="https://...trycloudflare.com" />
+              </div>
+              <div>
+                <div class="kv-label">Bootstrap Token</div>
+                <input id="d5-token" type="text" placeholder="sam_tok_..." oninput="if(this.value) document.getElementById('d5-jwt').value=''" />
+              </div>
+              <div>
+                <div class="kv-label">OIDC JWT (Optional)</div>
+                <input id="d5-jwt" type="text" placeholder="eyJ..." oninput="if(this.value) document.getElementById('d5-token').value=''" />
+              </div>
+              <div>
+                <div class="kv-label">Browser Agent Name</div>
+                <input id="d5-agent-name" type="text" value="Browser Agent" />
+                <input id="d5-persona" type="hidden" value="Helpful Assistant" />
+              </div>
+              <div>
+                <div class="kv-label">Gemini Provider Peer ID</div>
+                <input id="d5-gemini-peer" type="text" placeholder="Auto-discovered..." />
+              </div>
+              <div>
+                <div class="kv-label">Gemini Service</div>
+                <input id="d5-gemini-service" type="text" value="egress://generativelanguage.googleapis.com" />
+              </div>
+              <div>
+                <div class="kv-label">A2A Peer ID (Optional Tab-to-Tab / Peer Chat)</div>
+                <input id="d5-target-peer" type="text" placeholder="12D3KooW..." />
+              </div>
+              <div>
+                <div class="kv-label">A2A Target Service</div>
+                <input id="d5-target-service" type="text" value="a2a://mesh-oracle" />
+              </div>
+            </div>
+            <div class="kv-label" style="margin-top:4px;">Browser SDK Protocol Log</div>
+            <div id="d5-console" class="event-list" style="height: 110px;"></div>
+          </details>
         </div>
-        <div class="kv-label">Enrollment URL / Parameters</div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <input id="d5-enroll-url" type="text" placeholder="sam://enroll?server=http://127.0.0.1:PORT&token=SECRET" style="margin-bottom:0; flex:1;" />
-          <button id="d5-parse-btn" class="btn btn-primary" onclick="demo5ParseUrl()">Parse</button>
-        </div>
-        
-        <div class="grid-2" style="margin-top: 15px;">
-          <div>
-            <div class="kv-label">Control Plane URL</div>
-            <input id="d5-cp-url" type="text" placeholder="http://127.0.0.1:PORT" />
-            <div class="kv-label">Bootstrap Token</div>
-            <input id="d5-token" type="text" placeholder="secret-token" oninput="if(this.value) document.getElementById('d5-jwt').value=''" />
-            <div class="kv-label">JWT / OIDC Token</div>
-            <input id="d5-jwt" type="text" placeholder="eyJ..." oninput="if(this.value) document.getElementById('d5-token').value=''" />
-            <div class="kv-label">Agent Name</div>
-            <input id="d5-agent-name" type="text" value="Browser Agent" />
-            
-            <div class="btn-row" style="margin-top: 15px;">
-              <button id="d5-join-btn" class="btn btn-emerald" onclick="demo5Join()">Enroll &amp; Join Mesh</button>
-              <button id="d5-leave-btn" class="btn btn-rose" onclick="demo5Leave()" style="display:none;">Leave Mesh</button>
+
+        <div class="card" style="display:flex; flex-direction:column; gap:12px;">
+          <div class="card-header" style="margin-bottom:0;">
+            <div>
+              <h2 class="card-title">Chat with Gemini over SAM Mesh</h2>
+              <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">
+                Zero API keys in browser &bull; End-to-end authenticated <code>/libp2p-http</code> &rarr; <code>egress://generativelanguage.googleapis.com</code>
+              </div>
+            </div>
+            <span id="d5-chat-badge" class="badge badge-emerald">Gemini Egress PEP</span>
+          </div>
+
+          <div id="d5-chat-log" class="chat-thread">
+            <div id="d5-chat-empty" style="margin:auto; text-align:center; color:var(--muted); font-size:13px; max-width:460px;">
+              Click <strong>Connect to Mesh</strong> above, then type any message below to chat with Gemini over the Sovereign Agent Mesh.
             </div>
           </div>
-          
-          <div>
-            <div class="kv-label">Browser Agent Peer ID</div>
-            <div id="d5-peer-id" class="peer-box">Not Joined</div>
-            <div class="kv-label">Live Console Log</div>
-            <div id="d5-console" class="event-list" style="height: 180px;"></div>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input
+              id="d5-chat-input"
+              type="text"
+              placeholder="Message Gemini... (Press Enter to send)"
+              value="Hello Gemini! Explain in two short sentences how Biscuit tokens protect an agent mesh."
+              style="margin-bottom:0; flex:1; padding:10px 12px; font-size:13.5px;"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();demo5Banter();}"
+            />
+            <button id="d5-banter-btn" class="btn btn-emerald" onclick="demo5Banter()" style="padding:10px 18px;">Send</button>
+            <button id="d5-send-a2a-btn" class="btn btn-primary" onclick="demo5SendA2A()" style="padding:10px 14px;" title="Send to A2A Peer">Send to Peer</button>
           </div>
         </div>
       </div>
@@ -643,25 +771,125 @@ paths:   ["/repos/acme/*"]</pre>
         </div>
       </div>
     </section>
+
+    <!-- ================================================================== -->
+    <!-- DEMO 7: "Who Broke Prod?" AI Incident War Room (Gemini Egress PEP) -->
+    <!-- ================================================================== -->
+    <section id="panel-demo7" class="demo-panel">
+      <div class="grid-2">
+        <!-- Left Column: Detective Prompt + Suspect Cards + Live Banter Feed -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">&#128373;&#65039; "Who Broke Prod?" Multi-Agent Interrogation</h2>
+            <span id="d7-mode-badge" class="badge badge-purple">Gemini Egress PEP Active</span>
+          </div>
+          <div class="kv-label">Agent Zero (Chief Incident Detective) Peer ID</div>
+          <div id="d7-detective-peer" class="peer-box">Loading...</div>
+
+          <div class="kv-label">Incident Prompt / Accusation (Pick a Scenario or Type Your Own)</div>
+          <input id="d7-prompt" type="text" value="Who pushed `DROP TABLE users; -- YOLO` to main on Friday at 4:59 PM?" />
+          <div class="btn-row" style="margin-bottom: 8px;">
+            <button class="btn btn-amber" onclick="demo7SetPrompt('Who pushed `DROP TABLE users; -- YOLO` to main on Friday at 4:59 PM?')">&#128293; Friday 4:59 PM Drop Table</button>
+            <button class="btn btn-amber" onclick="demo7SetPrompt('Why is our EU Kubernetes cluster mining Dogecoin in us-east-1?')">&#128021; K8s Dogecoin Miner</button>
+            <button class="btn btn-amber" onclick="demo7SetPrompt('Should we rewrite the entire Rust control plane in Bash one-liners?')">&#127837; Rewrite Rust in Bash</button>
+          </div>
+
+          <div class="btn-row" style="margin-bottom: 12px;">
+            <button id="d7-interrogate-all-btn" class="btn btn-primary" onclick="demo7Interrogate('all')">Interrogate All 3 Agents + Synthesize Verdict</button>
+            <button id="d7-ask-cowboy" class="btn btn-emerald" onclick="demo7Interrogate('cowboy')">Ask &#129312; Chad</button>
+            <button id="d7-ask-sec" class="btn btn-emerald" onclick="demo7Interrogate('sec')">Ask &#128373;&#65039; Vera</button>
+            <button id="d7-ask-sre" class="btn btn-emerald" onclick="demo7Interrogate('sre')">Ask &#129302; BlameBot</button>
+          </div>
+
+          <div id="d7-suspects-grid" class="spec-grid" style="margin-bottom: 12px;"></div>
+
+          <div class="kv-label">Live Multi-Agent A2A Banter &amp; Post-Mortem Verdict</div>
+          <div id="d7-chat-feed" class="event-list" style="max-height: 250px;"></div>
+        </div>
+
+        <!-- Right Column: Gemini Egress PEP & Datalog Guardrail Telemetry -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Gemini Egress PEP (<code>sam-node</code>)</h2>
+            <span class="badge badge-emerald">egress://generativelanguage.googleapis.com</span>
+          </div>
+          <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">
+            Every agent on the mesh holds <strong>zero API keys</strong>. Each agent thinks by calling <code>egress://generativelanguage.googleapis.com</code> through the PEP, which enforces Datalog HTTP rules, strips <code>X-Sam-Biscuit</code>, and injects <code>gemini-api-key</code> from <code>--secrets-dir</code>.
+          </div>
+
+          <div class="kv-label">Gemini PEP Peer ID &amp; Attested Label (<code>served_by: ["site=us-central1"]</code>)</div>
+          <div id="d7-pep-peer" class="peer-box" style="color: var(--emerald);">Loading...</div>
+
+          <div class="kv-label">Narrowed Datalog HTTP Grant (<code>POST /v1beta/openai/*</code>)</div>
+          <pre id="d7-datalog-rules" class="code-box" style="max-height: 95px;">Loading...</pre>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+            <div class="kv-label" style="margin-bottom:0;">PEP Egress Calls &amp; Secret Injection Log</div>
+            <button id="d7-test-deny-btn" class="btn btn-rose" style="padding:5px 10px; font-size:11.5px;" onclick="demo7TestBlockedEgress()">
+              Test Rogue DELETE /v1beta/models (403 Denied)
+            </button>
+          </div>
+          <div id="d7-egress-log" class="event-list" style="max-height: 275px;"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
+    const DEMO_TITLES = {
+      demo1: 'Demo 1: Zero-Trust Two-Agent Playground',
+      demo2: 'Demo 2: Polyglot Multi-Hop Delegation Tracer',
+      demo3: 'Demo 3: QR Bounded Multi-Agent Incident Room',
+      demo4: 'Demo 4: Federated Specialist Swarm',
+      demo5: 'Browser Gemini Chat (Cloudflare Tunnel / WebSocket Relay)',
+      demo6: 'Demo 6: Egress PEP & Fine-Grained HTTP Grants',
+      demo7: 'Demo 7: AI Incident War Room (Gemini Egress PEP)',
+    };
+
     async function switchTab(name) {
-      for (const id of ['demo1', 'demo2', 'demo3', 'demo4', 'demo5', 'demo6']) {
+      for (const id of ['demo1', 'demo2', 'demo3', 'demo4', 'demo5', 'demo6', 'demo7']) {
         document.getElementById('tab-' + id).classList.toggle('active', id === name);
         document.getElementById('panel-' + id).classList.toggle('active', id === name);
       }
+      const titleEl = document.getElementById('active-demo-title');
+      if (titleEl && DEMO_TITLES[name]) {
+        titleEl.textContent = `SAM Mesh — ${DEMO_TITLES[name]}`;
+      }
+      const switcherEl = document.getElementById('demo-switcher');
+      if (switcherEl) {
+        switcherEl.value = name;
+      }
+      try {
+        const u = new URL(window.location.href);
+        if (!u.searchParams.get('enroll') && !u.searchParams.get('server')) {
+          u.searchParams.set('demo', name);
+          window.history.replaceState(null, '', u.toString());
+        }
+      } catch {}
       if (name === 'demo1') await loadDemo1();
       if (name === 'demo2') await loadDemo2();
       if (name === 'demo3') await loadDemo3();
       if (name === 'demo4') await loadDemo4();
       if (name === 'demo5') await loadDemo5();
       if (name === 'demo6') await loadDemo6();
+      if (name === 'demo7') await loadDemo7();
     }
 
     // ---- DEMO 1 ----
     async function loadDemo1() {
-      const r = await fetch('/api/demo1/state');
+      let r;
+      try {
+        r = await fetch('/api/demo1/state');
+      } catch {
+        r = null;
+      }
+      if (!r || !r.ok) {
+        document.getElementById('header-status').textContent = 'Standalone Browser Mode (GitHub Pages)';
+        const switcherEl = document.getElementById('demo-switcher');
+        if (switcherEl) switcherEl.style.display = 'none';
+        await switchTab('demo5');
+        return;
+      }
       const s = await r.json();
       document.getElementById('d1-alpha-peer').textContent = s.alphaPeerId;
       document.getElementById('d1-beta-peer').textContent = s.betaPeerId;
@@ -680,12 +908,15 @@ paths:   ["/repos/acme/*"]</pre>
       }
 
       const betaStatus = document.getElementById('d1-beta-status');
+      const resetBtn = document.getElementById('d1-btn-reset');
       if (s.betaBanned) {
         betaStatus.className = 'badge badge-rose';
         betaStatus.textContent = 'REVOKED (PEER_BAN)';
+        if (resetBtn) resetBtn.style.display = 'inline-block';
       } else {
         betaStatus.className = 'badge badge-emerald';
         betaStatus.textContent = 'ADMITTED';
+        if (resetBtn) resetBtn.style.display = 'none';
       }
 
       const streamLog = document.getElementById('d1-stream-log');
@@ -744,6 +975,11 @@ paths:   ["/repos/acme/*"]</pre>
 
     async function demo1BanBeta() {
       await fetch('/api/demo1/ban', { method: 'POST' });
+      await loadDemo1();
+    }
+
+    async function demo1Reset() {
+      await fetch('/api/demo1/reset', { method: 'POST' });
       await loadDemo1();
     }
 
@@ -886,16 +1122,136 @@ paths:   ["/repos/acme/*"]</pre>
     }
 
     // ---- DEMO 5 ----
+    let browserSdk = null;
     let browserMesh = null;
     let browserSession = null;
+    let demo5ChatHistory = [];
+    window.demo5LocalCpUrl = '';
 
     function d5Log(msg, type = 'ok') {
       const consoleEl = document.getElementById('d5-console');
+      if (!consoleEl) return;
       const item = document.createElement('div');
       item.className = `event-item ${type}`;
       item.innerHTML = `<div class="event-meta"><span>BROWSER SDK</span></div><div>${msg}</div>`;
       consoleEl.appendChild(item);
       consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function d5ChatAppend(speaker, peerId, text, metaLabel = 'Mesh', role = 'assistant') {
+      const chatEl = document.getElementById('d5-chat-log');
+      const emptyEl = document.getElementById('d5-chat-empty');
+      if (emptyEl) emptyEl.remove();
+      const item = document.createElement('div');
+      item.className = `chat-bubble ${role === 'user' ? 'user' : 'assistant'}`;
+      item.setAttribute('data-chat-turn', 'true');
+      item.innerHTML = `
+        <div class="chat-meta"><span>${speaker} &bull; ${metaLabel}</span><span>${peerId ? peerId.slice(0, 16) + '...' : ''}</span></div>
+        <div>${text}</div>
+      `;
+      chatEl.appendChild(item);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function generateBrowserPersonaReply(name, persona, incomingText) {
+      let cleanText = incomingText;
+      try {
+        const parsed = JSON.parse(incomingText);
+        if (parsed && parsed.text) cleanText = parsed.text;
+      } catch {}
+      return `Hello from ${name}! I received "${cleanText}" over the Sovereign Agent Mesh with verified Biscuit Proof-of-Possession.`;
+    }
+
+    async function demo5AskMeshGemini(name, persona, promptText, historyOverride = null) {
+      let cleanText = promptText;
+      try {
+        const parsed = JSON.parse(promptText);
+        if (parsed && parsed.text) cleanText = parsed.text;
+      } catch {}
+
+      let geminiPeer = document.getElementById('d5-gemini-peer')?.value.trim() || '';
+      if (browserSession && !geminiPeer) {
+        await demo5Discover();
+        geminiPeer = document.getElementById('d5-gemini-peer')?.value.trim() || '';
+      }
+      const geminiService = document.getElementById('d5-gemini-service')?.value.trim() || 'egress://generativelanguage.googleapis.com';
+      if (browserSession && geminiPeer) {
+        try {
+          const t0 = performance.now();
+          await browserSession.connect(geminiPeer);
+          const reqPath = geminiService.startsWith('egress://')
+            ? '/v1beta/openai/chat/completions'
+            : '/v1/chat/completions';
+          const chatMessages = historyOverride && historyOverride.length > 0
+            ? [
+                {
+                  role: 'system',
+                  content: 'You are Gemini, a helpful, concise AI assistant accessed over a zero-trust Sovereign Agent Mesh (SAM).',
+                },
+                ...historyOverride,
+              ]
+            : [
+                {
+                  role: 'system',
+                  content: 'You are Gemini, a helpful, concise AI assistant accessed over a zero-trust Sovereign Agent Mesh (SAM).',
+                },
+                {
+                  role: 'user',
+                  content: cleanText,
+                },
+              ];
+          const res = await browserSession.request(geminiPeer, geminiService, reqPath, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: new TextEncoder().encode(
+              JSON.stringify({
+                model: 'gemini-2.5-flash-lite',
+                messages: chatMessages,
+              }),
+            ),
+          });
+          const ms = Math.max(1, Math.round(performance.now() - t0));
+          if (res.status === 200) {
+            const data = JSON.parse(res.text());
+            const content = data.choices?.[0]?.message?.content?.trim();
+            if (content) {
+              d5Log(`Consulted mesh Gemini (${geminiService}) from browser in ${ms} ms`);
+              return content;
+            }
+          } else {
+            d5Log(`Mesh Gemini returned HTTP ${res.status}: ${res.text()}`, 'denied');
+          }
+        } catch (err) {
+          d5Log(`Mesh Gemini fallback (${err.message}); using local fallback.`);
+        }
+      }
+      return generateBrowserPersonaReply(name, persona, cleanText);
+    }
+
+    function demo5SelectTarget(peerId, service) {
+      document.getElementById('d5-target-peer').value = peerId;
+      document.getElementById('d5-target-service').value = service;
+      d5Log(`Selected A2A chat target: ${service} on ${peerId.slice(0, 16)}...`);
+    }
+
+    function demo5SelectGemini(peerId, service) {
+      document.getElementById('d5-gemini-peer').value = peerId;
+      document.getElementById('d5-gemini-service').value = service;
+      d5Log(`Selected Mesh Gemini provider: ${service} on ${peerId.slice(0, 16)}...`);
+    }
+
+    function demo5RenderDiscovered(items) {
+      const container = document.getElementById('d5-discovered-list');
+      if (!container) return;
+      container.innerHTML = items
+        .map((item) => {
+          const fn = item.kind === 'gemini' ? 'demo5SelectGemini' : 'demo5SelectTarget';
+          const cls = item.kind === 'gemini' ? 'btn-emerald' : 'btn-primary';
+          return `<button class="btn ${cls}" style="padding:4px 8px; font-size:11px;" onclick="${fn}('${item.peerId}', '${item.service}')">${item.label}: ${item.service} (${item.peerId.slice(0, 10)}...)</button>`;
+        })
+        .join('');
     }
 
     function demo5ParseUrl() {
@@ -929,40 +1285,91 @@ paths:   ["/repos/acme/*"]</pre>
       const qServer = params.get('server');
       const qToken = params.get('token');
       const qJwt = params.get('jwt');
-      if (qEnroll) {
-        document.getElementById('d5-enroll-url').value = qEnroll;
-        demo5ParseUrl();
-        return;
-      }
-      if (qServer) {
-        document.getElementById('d5-cp-url').value = qServer;
-        if (qToken) document.getElementById('d5-token').value = qToken;
-        if (qJwt) document.getElementById('d5-jwt').value = qJwt;
-        return;
-      }
+      const qTargetPeer = params.get('targetPeer');
+      const qTargetService = params.get('targetService');
+      const qGeminiPeer = params.get('geminiPeer');
+      const qGeminiService = params.get('geminiService');
+
       try {
         const r = await fetch('/api/demo5/state');
         if (r.ok) {
           const s = await r.json();
-          if (!document.getElementById('d5-enroll-url').value && s.enrollUri) {
-            document.getElementById('d5-enroll-url').value = s.enrollUri;
+          const originUrl = window.location.protocol.startsWith('http') ? window.location.origin : s.localCpUrl;
+          window.demo5LocalCpUrl = originUrl || '';
+          const preferredCpUrl = s.cloudflareUrl || originUrl || s.samOneUrl;
+          const enrollUri = s.browserToken && preferredCpUrl
+            ? `sam://enroll?server=${encodeURIComponent(preferredCpUrl)}&token=${encodeURIComponent(s.browserToken)}`
+            : s.enrollUri;
+          const tunnelBadge = document.getElementById('d5-tunnel-badge');
+          if (tunnelBadge && s.cloudflareUrl) {
+            try {
+              tunnelBadge.textContent = `Cloudflare Tunnel (${new URL(s.cloudflareUrl).hostname})`;
+            } catch {}
           }
-          if (!document.getElementById('d5-cp-url').value && s.samOneUrl) {
-            document.getElementById('d5-cp-url').value = s.samOneUrl;
+          if (!document.getElementById('d5-enroll-url').value && enrollUri) {
+            document.getElementById('d5-enroll-url').value = enrollUri;
+          }
+          if (!document.getElementById('d5-cp-url').value && preferredCpUrl) {
+            document.getElementById('d5-cp-url').value = preferredCpUrl;
           }
           if (!document.getElementById('d5-token').value && !document.getElementById('d5-jwt').value && s.browserToken) {
             document.getElementById('d5-token').value = s.browserToken;
           }
+          if (!document.getElementById('d5-target-peer').value && s.companionPeerId) {
+            document.getElementById('d5-target-peer').value = s.companionPeerId;
+          }
+          if (s.companionService) {
+            document.getElementById('d5-target-service').value = s.companionService;
+          }
+          if (!document.getElementById('d5-gemini-peer').value && s.geminiPeerId) {
+            document.getElementById('d5-gemini-peer').value = s.geminiPeerId;
+          }
+          if (s.geminiService) {
+            document.getElementById('d5-gemini-service').value = s.geminiService;
+          }
+        } else {
+          document.getElementById('header-status').textContent = 'Standalone Browser Mode (GitHub Pages)';
         }
       } catch {
-        // Running as static page on GitHub Pages without local backend
+        document.getElementById('header-status').textContent = 'Standalone Browser Mode (GitHub Pages)';
+      }
+
+      if (qTargetPeer) document.getElementById('d5-target-peer').value = qTargetPeer;
+      if (qTargetService) document.getElementById('d5-target-service').value = qTargetService;
+      if (qGeminiPeer) document.getElementById('d5-gemini-peer').value = qGeminiPeer;
+      if (qGeminiService) document.getElementById('d5-gemini-service').value = qGeminiService;
+      if (qEnroll) {
+        document.getElementById('d5-enroll-url').value = qEnroll;
+        demo5ParseUrl();
+      } else if (qServer) {
+        document.getElementById('d5-cp-url').value = qServer;
+        if (qToken) document.getElementById('d5-token').value = qToken;
+        if (qJwt) document.getElementById('d5-jwt').value = qJwt;
       }
     }
 
+    function buildWsMultiaddr(urlStr, peerId) {
+      const parsed = new URL(urlStr);
+      const host = parsed.hostname.replace(/^\[|\]$/g, '');
+      const isIpv4 = /^\d+\.\d+\.\d+\.\d+$/.test(host);
+      const isIpv6 = host.includes(':');
+      const hostProto = isIpv4 ? 'ip4' : isIpv6 ? 'ip6' : 'dns4';
+      const isTls = parsed.protocol === 'https:';
+      const port = parsed.port || (isTls ? '443' : '80');
+      const wsProto = isTls ? 'wss' : 'ws';
+      return `/${hostProto}/${host}/tcp/${port}/${wsProto}/p2p/${peerId}`;
+    }
+
     async function demo5Join() {
-      const cpUrl = document.getElementById('d5-cp-url').value.trim();
-      const token = document.getElementById('d5-token').value.trim();
-      const jwt = document.getElementById('d5-jwt').value.trim();
+      let cpUrl = document.getElementById('d5-cp-url').value.trim();
+      let token = document.getElementById('d5-token').value.trim();
+      let jwt = document.getElementById('d5-jwt').value.trim();
+      if ((!cpUrl || (!token && !jwt)) && document.getElementById('d5-enroll-url').value.trim()) {
+        demo5ParseUrl();
+        cpUrl = document.getElementById('d5-cp-url').value.trim();
+        token = document.getElementById('d5-token').value.trim();
+        jwt = document.getElementById('d5-jwt').value.trim();
+      }
       const name = document.getElementById('d5-agent-name').value.trim() || 'browser-agent';
 
       if (!cpUrl || (!token && !jwt)) {
@@ -977,17 +1384,67 @@ paths:   ["/repos/acme/*"]</pre>
       try {
         d5Log('Loading @sam-mesh/sdk browser bundle (WebAssembly Biscuit + WebSocket libp2p)...');
         const sdk = await import('./sdk/index.js');
+        browserSdk = sdk;
 
         d5Log(`Enrolling browser identity with ${cpUrl}...`);
-        const enrollOptions = { controlPlaneUrl: cpUrl };
+        const enrollOptions = { controlPlaneUrl: cpUrl, allowInsecure: true };
         if (token) enrollOptions.bootstrapToken = token;
         if (jwt) enrollOptions.jwt = jwt;
 
-        browserMesh = await sdk.AgentMesh.enroll(enrollOptions);
+        try {
+          browserMesh = await sdk.AgentMesh.enroll(enrollOptions);
+        } catch (enrollErr) {
+          if (window.demo5LocalCpUrl && cpUrl !== window.demo5LocalCpUrl) {
+            d5Log(`Cloudflare tunnel warming up (${enrollErr.message}); enrolling via ${window.demo5LocalCpUrl}...`);
+            cpUrl = window.demo5LocalCpUrl;
+            browserMesh = await sdk.AgentMesh.enroll({ ...enrollOptions, controlPlaneUrl: cpUrl });
+          } else {
+            throw enrollErr;
+          }
+        }
         d5Log(`Enrolled with Ed25519 Peer ID: ${browserMesh.peerId}`);
 
         statusBadge.textContent = 'Joining...';
-        browserSession = await browserMesh.join();
+        const rawAddrs = browserMesh.credential?.routerAddresses || [];
+        const primaryAddrs = [];
+        const localFallbackAddrs = [];
+        const routerPeerIds = [];
+        for (const addr of rawAddrs) {
+          const m = String(addr).match(/\/p2p\/([^/]+)$/);
+          if (m && !routerPeerIds.includes(m[1])) routerPeerIds.push(m[1]);
+        }
+        try {
+          for (const pid of routerPeerIds) {
+            const addr = buildWsMultiaddr(cpUrl, pid);
+            if (!primaryAddrs.includes(addr)) primaryAddrs.push(addr);
+          }
+        } catch {}
+        if (primaryAddrs.length === 0) {
+          for (const addr of rawAddrs) {
+            if (!primaryAddrs.includes(addr)) primaryAddrs.push(addr);
+          }
+        }
+        if (window.demo5LocalCpUrl && window.demo5LocalCpUrl !== cpUrl) {
+          try {
+            for (const pid of routerPeerIds) {
+              const localAddr = buildWsMultiaddr(window.demo5LocalCpUrl, pid);
+              if (!localFallbackAddrs.includes(localAddr)) localFallbackAddrs.push(localAddr);
+            }
+          } catch {}
+        }
+
+        try {
+          browserSession = await browserMesh.join(
+            primaryAddrs.length > 0 ? { routerAddresses: primaryAddrs } : undefined,
+          );
+        } catch (joinErr) {
+          if (localFallbackAddrs.length > 0) {
+            d5Log(`Primary relay dial fallback (${joinErr.message}); dialing local relay...`);
+            browserSession = await browserMesh.join({ routerAddresses: localFallbackAddrs });
+          } else {
+            throw joinErr;
+          }
+        }
         d5Log('Joined mesh over WebSocket relay and reserved circuit slot.');
 
         document.getElementById('d5-peer-id').textContent = browserSession.peerId;
@@ -1021,14 +1478,23 @@ paths:   ["/repos/acme/*"]</pre>
           async execute(context, eventBus) {
             const said = context.userMessage.parts.map((p) => (p.content?.$case === 'text' ? p.content.value : '')).join('');
             const callerPeerId = context.context?.user?.userName ?? 'unknown';
+            const persona = document.getElementById('d5-persona')?.value || 'Helpful Assistant';
+            const replyText = await demo5AskMeshGemini(name, persona, said);
             d5Log(`Accepted A2A SendMessage from verified peer ${callerPeerId}: ${said}`);
+            let cleanInbound = said;
+            try {
+              const p = JSON.parse(said);
+              if (p && p.text) cleanInbound = p.text;
+            } catch {}
+            d5ChatAppend(`Peer (${callerPeerId.slice(0, 10)}...)`, callerPeerId, cleanInbound, 'Inbound A2A', 'user');
+            d5ChatAppend(name, browserSession.peerId, replyText, 'A2A Reply via Gemini', 'assistant');
             eventBus.publish(
               AgentEvent.message({
                 messageId: crypto.randomUUID(),
                 contextId: context.contextId,
                 taskId: '',
                 role: Role.ROLE_AGENT,
-                parts: [{ content: { $case: 'text', value: JSON.stringify({ reply: `Browser Agent ${name} acknowledged via A2A JSON-RPC` }) }, filename: '', mediaType: 'application/json', metadata: undefined }],
+                parts: [{ content: { $case: 'text', value: JSON.stringify({ reply: replyText }) }, filename: '', mediaType: 'application/json', metadata: undefined }],
                 metadata: undefined,
                 extensions: [],
                 referenceTaskIds: [],
@@ -1054,6 +1520,9 @@ paths:   ["/repos/acme/*"]</pre>
           },
         });
         d5Log(`Serving A2A AgentCard & JSON-RPC at a2a://${svcName} directly from this browser tab.`);
+        if (!document.getElementById('d5-gemini-peer').value.trim()) {
+          await demo5Discover();
+        }
         try {
           await fetch('/api/demo5/verify', {
             method: 'POST',
@@ -1070,11 +1539,151 @@ paths:   ["/repos/acme/*"]</pre>
       }
     }
 
+    async function demo5Discover() {
+      if (!browserSession) {
+        d5Log('Join the mesh first to discover services across the DHT.', 'denied');
+        return;
+      }
+      d5Log('Searching mesh DHT for a2a://, inference://, and egress:// providers...');
+      try {
+        const [a2aPeers, infPeers, egressPeers] = await Promise.all([
+          browserSession.discover('a2a', undefined, { timeoutMs: 2000 }).catch(() => []),
+          browserSession.discover('inference', undefined, { timeoutMs: 2000 }).catch(() => []),
+          browserSession.discover('egress', undefined, { timeoutMs: 2000 }).catch(() => []),
+        ]);
+        const targetPeer = document.getElementById('d5-target-peer').value.trim();
+        const targetSvc = document.getElementById('d5-target-service').value.trim() || 'a2a://mesh-oracle';
+        const geminiPeer = document.getElementById('d5-gemini-peer').value.trim();
+        const geminiSvc = document.getElementById('d5-gemini-service').value.trim() || 'egress://generativelanguage.googleapis.com';
+        const chips = [];
+        for (const p of a2aPeers) {
+          chips.push({
+            kind: 'a2a',
+            label: 'DHT A2A',
+            peerId: p.peerId,
+            service: p.peerId === targetPeer ? targetSvc : 'a2a://mesh-oracle',
+          });
+        }
+        for (const p of infPeers) {
+          chips.push({ kind: 'gemini', label: 'DHT Inference', peerId: p.peerId, service: 'inference://gemini' });
+        }
+        for (const p of egressPeers) {
+          chips.push({ kind: 'gemini', label: 'DHT Egress', peerId: p.peerId, service: 'egress://generativelanguage.googleapis.com' });
+        }
+        if (targetPeer && !chips.some((c) => c.peerId === targetPeer)) {
+          chips.push({ kind: 'a2a', label: 'Relay Peer', peerId: targetPeer, service: targetSvc });
+        }
+        if (geminiPeer && !chips.some((c) => c.peerId === geminiPeer)) {
+          chips.push({ kind: 'gemini', label: 'Gemini PEP', peerId: geminiPeer, service: geminiSvc });
+        }
+        if (!geminiPeer && (egressPeers.length > 0 || infPeers.length > 0)) {
+          const picked = egressPeers[0] || infPeers[0];
+          const svc = egressPeers.length > 0 ? 'egress://generativelanguage.googleapis.com' : 'inference://gemini';
+          demo5SelectGemini(picked.peerId, svc);
+        }
+        if (!targetPeer && a2aPeers.length > 0) {
+          demo5SelectTarget(a2aPeers[0].peerId, 'a2a://mesh-oracle');
+        }
+        demo5RenderDiscovered(chips);
+        d5Log(`Discovery finished: ${a2aPeers.length} a2a://, ${infPeers.length} inference://, ${egressPeers.length} egress:// DHT providers (${chips.length} selectable endpoints).`);
+      } catch (err) {
+        d5Log(`Discovery error: ${err.message}`, 'banned');
+      }
+    }
+
+    async function demo5CallPeerFromBrowser(textToSend) {
+      if (!browserSession || !browserSdk) {
+        d5Log('Join the mesh first before sending A2A messages from the browser!', 'denied');
+        return null;
+      }
+      const targetPeer = document.getElementById('d5-target-peer').value.trim();
+      const targetService = document.getElementById('d5-target-service').value.trim() || 'a2a://mesh-oracle';
+      const persona = document.getElementById('d5-persona').value.trim() || 'Helpful Assistant';
+      const myName = document.getElementById('d5-agent-name').value.trim() || 'Browser Agent';
+
+      if (!targetPeer) {
+        d5Log('Enter a Target Mesh Peer ID to talk to over A2A.', 'denied');
+        return null;
+      }
+
+      const t0 = performance.now();
+      d5ChatAppend('You', browserSession.peerId, textToSend, `Outbound A2A -> ${targetService}`, 'user');
+      await browserSession.connect(targetPeer);
+      const fetchImpl = browserSession.fetch();
+      const { Message, Role } = browserSdk.a2a;
+      const { ClientFactory, DefaultAgentCardResolver, JsonRpcTransportFactory } = browserSdk.a2aClient;
+      const factory = new ClientFactory({
+        transports: [new JsonRpcTransportFactory({ fetchImpl })],
+        cardResolver: new DefaultAgentCardResolver({ fetchImpl }),
+      });
+      const agentUrl = browserSdk.MeshSession.meshURL(targetPeer, targetService);
+      const client = await factory.createFromUrl(`${agentUrl}/`);
+      const card = await client.getAgentCard();
+      const answer = await client.sendMessage({
+        tenant: '',
+        message: Message.fromJSON({
+          messageId: crypto.randomUUID(),
+          role: Role[Role.ROLE_USER],
+          parts: [{ text: JSON.stringify({ text: textToSend, persona }) }],
+        }),
+        configuration: undefined,
+        metadata: undefined,
+      });
+      const latencyMs = Math.max(1, Math.round(performance.now() - t0));
+      const parts = 'parts' in answer ? answer.parts : (answer.status?.message?.parts ?? []);
+      const rawReply = parts.map((p) => (p.content?.$case === 'text' ? p.content.value : '')).join('');
+      let parsed;
+      try {
+        parsed = JSON.parse(rawReply);
+      } catch {
+        parsed = { reply: rawReply };
+      }
+      const replyText = parsed.reply || rawReply;
+      d5ChatAppend(card?.name || targetService, targetPeer, replyText, `${latencyMs} ms • Verified A2A Reply`, 'assistant');
+      d5Log(`Received A2A reply from ${targetPeer.slice(0, 16)}... (${targetService}) in ${latencyMs} ms`);
+      return replyText;
+    }
+
+    async function demo5SendA2A() {
+      const inputEl = document.getElementById('d5-chat-input');
+      const text = inputEl.value.trim() || 'Hello from the browser!';
+      try {
+        await demo5CallPeerFromBrowser(text);
+      } catch (err) {
+        d5Log(`A2A call failed: ${err.message}`, 'banned');
+      }
+    }
+
+    async function demo5Banter() {
+      if (!browserSession) {
+        d5Log('Connect to the mesh first before sending a chat message.', 'denied');
+        return;
+      }
+      const inputEl = document.getElementById('d5-chat-input');
+      const userText = inputEl.value.trim() || 'Hello Gemini!';
+      const persona = document.getElementById('d5-persona').value.trim() || 'Helpful Assistant';
+      const myName = document.getElementById('d5-agent-name').value.trim() || 'Browser Agent';
+      const geminiPeer = document.getElementById('d5-gemini-peer')?.value.trim() || '';
+      const geminiService = document.getElementById('d5-gemini-service')?.value.trim() || 'egress://generativelanguage.googleapis.com';
+      try {
+        const t0 = performance.now();
+        d5ChatAppend('You', browserSession.peerId, userText, `Outbound -> ${geminiService}`, 'user');
+        demo5ChatHistory.push({ role: 'user', content: userText });
+        const reply = await demo5AskMeshGemini(myName, persona, userText, demo5ChatHistory);
+        const ms = Math.max(1, Math.round(performance.now() - t0));
+        demo5ChatHistory.push({ role: 'assistant', content: reply });
+        d5ChatAppend('Gemini', geminiPeer || browserSession.peerId, reply, `${ms} ms • ${geminiService} • Verified Biscuit`, 'assistant');
+      } catch (err) {
+        d5Log(`Chat failed: ${err.message}`, 'banned');
+      }
+    }
+
     async function demo5Leave() {
       if (browserSession) {
         await browserSession.close();
         browserSession = null;
         browserMesh = null;
+        demo5ChatHistory = [];
         d5Log('Left mesh.');
       }
       document.getElementById('d5-status-badge').className = 'badge badge-amber';
@@ -1132,9 +1741,128 @@ paths:   ["/repos/acme/*"]</pre>
       await loadDemo6();
     }
 
+    // ---- DEMO 7 ----
+    function demo7SetPrompt(text) {
+      document.getElementById('d7-prompt').value = text;
+    }
+
+    async function loadDemo7() {
+      const r = await fetch('/api/demo7/state');
+      const s = await r.json();
+      document.getElementById('d7-detective-peer').textContent = s.detectivePeerId;
+      document.getElementById('d7-pep-peer').textContent = `${s.pepPeerId} (${s.pepLabel})`;
+      document.getElementById('d7-datalog-rules').textContent = (s.datalogRules || []).join('\n');
+
+      const modeBadge = document.getElementById('d7-mode-badge');
+      if (s.geminiMode === 'live-gemini') {
+        modeBadge.className = 'badge badge-emerald';
+        modeBadge.textContent = 'LIVE GEMINI API (via Egress PEP)';
+      } else {
+        modeBadge.className = 'badge badge-purple';
+        modeBadge.textContent = 'Gemini Egress PEP (Simulator Mode)';
+      }
+
+      const latestConv = s.conversations[s.conversations.length - 1];
+      document.getElementById('d7-suspects-grid').innerHTML = s.suspects.map(spec => {
+        const turn = latestConv?.turns?.find(t => t.suspectId === spec.id);
+        return `<div class="card" style="background:var(--panel-alt); padding:10px; border-color:${turn ? 'var(--emerald)' : 'var(--border)'};">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <strong style="font-size:12px;">${spec.emoji} ${spec.name}</strong>
+            <span class="badge ${turn ? 'badge-emerald' : 'badge-cyan'}">${turn ? turn.a2aMs + ' ms' : spec.service}</span>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">${spec.roleDesc}</div>
+          <div class="peer-box" style="font-size:10px; margin-bottom:0;">${spec.peerId}</div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('d7-chat-feed').innerHTML = s.conversations.slice().reverse().map(conv => `
+        <div class="event-item ok" data-conv-id="${conv.id}">
+          <div class="event-meta">
+            <span>Interrogation #${conv.id} &bull; "${conv.prompt}"</span>
+            <span>${conv.totalMs} ms total</span>
+          </div>
+          ${conv.turns.map(t => `
+            <div style="margin:6px 0; padding:6px 8px; background:var(--bg); border-radius:6px; border-left:3px solid var(--cyan);">
+              <div style="display:flex; justify-content:space-between; font-family:var(--mono); font-size:10.5px; color:var(--cyan);">
+                <span>${t.emoji} <strong>${t.agent}</strong> (${t.service})</span>
+                <span>A2A: ${t.a2aMs}ms | Gemini PEP: ${t.egressLatencyMs}ms</span>
+              </div>
+              <div style="margin-top:3px; font-size:12px;">${t.reply}</div>
+            </div>
+          `).join('')}
+          ${conv.verdict ? `
+            <div style="margin-top:6px; padding:7px 9px; background:rgba(52, 211, 153, 0.12); border-radius:6px; border-left:3px solid var(--emerald);">
+              <div style="font-family:var(--mono); font-size:10.5px; color:var(--emerald); font-weight:700;">
+                &#9878;&#65039; ${conv.verdict.agent} &mdash; SYNTHESIZED POST-MORTEM VERDICT
+              </div>
+              <div style="margin-top:3px; font-size:12px; color:var(--text);">${conv.verdict.text}</div>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      document.getElementById('d7-egress-log').innerHTML = s.egressCalls.slice().reverse().map(call => {
+        const ok = call.status === 200;
+        return `<div class="event-item ${ok ? 'ok' : 'denied'}" data-egress-status="${call.status}" data-egress-method="${call.method}">
+          <div class="event-meta">
+            <span>HTTP ${call.status} &bull; ${call.method} ${call.path}</span>
+            <span>${call.latencyMs} ms</span>
+          </div>
+          <div style="font-family:var(--mono); font-size:11px; color:var(--cyan);">
+            Caller: ${call.agent} (${call.callerPeerId.slice(0, 16)}...)
+          </div>
+          <div style="font-family:var(--mono); font-size:10.5px; color:var(--muted); margin:2px 0;">
+            Facts: ${call.facts.join(', ')}
+          </div>
+          ${ok
+            ? `<div style="color:var(--emerald); font-size:11.5px;">PEP stripped <code>X-Sam-Biscuit</code>, injected <code>gemini-api-key</code>, and returned Gemini completion.</div>`
+            : `<div style="color:var(--amber); font-size:11.5px;">PEP Datalog Authorizer Refused: <code>${call.proxyStatus || 'http_request_denied'}</code></div>`
+          }
+        </div>`;
+      }).join('');
+    }
+
+    async function demo7Interrogate(target = 'all') {
+      const prompt = document.getElementById('d7-prompt').value;
+      await fetch('/api/demo7/interrogate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, target }),
+      });
+      await loadDemo7();
+    }
+
+    async function demo7TestBlockedEgress() {
+      await fetch('/api/demo7/egress-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'DELETE', path: '/v1beta/models/gemini-2.5-flash' }),
+      });
+      await loadDemo7();
+    }
+
     const initParams = new URLSearchParams(window.location.search);
-    if (initParams.get('demo') === 'demo5' || initParams.get('enroll') || initParams.get('server')) {
+    const requestedDemo = initParams.get('demo');
+    if (
+      initParams.get('single') ||
+      initParams.get('enroll') ||
+      initParams.get('server') ||
+      initParams.get('standalone') ||
+      window.location.hostname.endsWith('.github.io')
+    ) {
+      const switcherEl = document.getElementById('demo-switcher');
+      if (switcherEl) switcherEl.style.display = 'none';
+    }
+    if (
+      requestedDemo === 'demo5' ||
+      initParams.get('enroll') ||
+      initParams.get('server') ||
+      initParams.get('standalone') ||
+      window.location.hostname.endsWith('.github.io')
+    ) {
       switchTab('demo5');
+    } else if (requestedDemo && DEMO_TITLES[requestedDemo]) {
+      switchTab(requestedDemo);
     } else {
       loadDemo1();
     }

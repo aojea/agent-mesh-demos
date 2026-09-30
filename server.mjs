@@ -72,39 +72,57 @@ async function waitForReady(url, timeoutMs = 15000) {
   throw new Error(`sam-one did not become ready at ${url}`);
 }
 
+const localCloudflaredBin = path.join(__dirname, ".sam-bin", "cloudflared");
+const SAM_TUNNEL = process.env.SAM_TUNNEL ?? "cloudflare";
+
 const samOnePort = await getFreePort();
 const samOneDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sam-one-demos-"));
 const samOneUrl = `http://127.0.0.1:${samOnePort}`;
 
-const samOneProc = spawn(
-  SAM_ONE_BIN,
-  [
-    "--bind-address",
-    "127.0.0.1",
-    "--port",
-    String(samOnePort),
-    "--p2p-listen",
-    "/ip4/127.0.0.1/tcp/0",
-    "--data-dir",
-    samOneDataDir,
-  ],
-  {
-    env: { ...process.env, SAM_ADMIN_TOKEN: ADMIN_TOKEN },
-    stdio: ["ignore", "pipe", "pipe"],
-  },
-);
-await waitForReady(samOneUrl);
+const samOneArgs = [
+  "--bind-address",
+  "127.0.0.1",
+  "--port",
+  String(samOnePort),
+  "--p2p-listen",
+  "/ip4/127.0.0.1/tcp/0",
+  "--data-dir",
+  samOneDataDir,
+];
+if (SAM_TUNNEL === "cloudflare") {
+  samOneArgs.push("--tunnel", "cloudflare", "--tunnel-install");
+  if (fs.existsSync(localCloudflaredBin)) {
+    samOneArgs.push("--cloudflared-path", localCloudflaredBin);
+  }
+}
+
+const samOneProc = spawn(SAM_ONE_BIN, samOneArgs, {
+  env: { ...process.env, SAM_ADMIN_TOKEN: ADMIN_TOKEN },
+  stdio: ["ignore", "pipe", "pipe"],
+});
+samOneProc.stdout.on("data", () => {});
+samOneProc.stderr.on("data", () => {});
+await waitForReady(samOneUrl, 30000);
 
 const joinToken = fs.readFileSync(path.join(samOneDataDir, "join-token"), "utf8").trim();
+let routerPeerId = null;
+let cloudflareUrl = null;
 let routerAddr = `/ip4/127.0.0.1/tcp/${samOnePort}/ws`;
-for (let i = 0; i < 30; i++) {
+for (let i = 0; i < 60; i++) {
   const statusRes = await fetch(`${samOneUrl}/admin/status`, {
     headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
   });
   if (statusRes.ok) {
     const statusJson = await statusRes.json();
-    if (statusJson.active_routers?.length > 0) {
-      routerAddr = statusJson.active_routers[0].Addresses?.[0] || routerAddr;
+    const rt = statusJson.active_routers?.[0];
+    if (rt) {
+      routerPeerId = rt.PeerID || null;
+      routerAddr = rt.Addresses?.[0] || routerAddr;
+      const cfAddr = (rt.Addresses || []).find((a) => a.includes("trycloudflare.com"));
+      if (cfAddr) {
+        const m = cfAddr.match(/\/dns4\/([^/]+)\//);
+        if (m) cloudflareUrl = `https://${m[1]}`;
+      }
       break;
     }
   }
@@ -118,7 +136,11 @@ async function enrollAndJoin(token = joinToken, role = undefined) {
   };
   if (role) opts.role = role;
   const mesh = await sdk.AgentMesh.enroll(opts);
-  const session = await mesh.join();
+  const localWsAddr = routerPeerId
+    ? `/ip4/127.0.0.1/tcp/${samOnePort}/ws/p2p/${routerPeerId}`
+    : null;
+  const routerAddresses = localWsAddr ? [localWsAddr] : undefined;
+  const session = await mesh.join(routerAddresses ? { routerAddresses } : undefined);
   return { mesh, session };
 }
 
@@ -574,22 +596,209 @@ async function ensureDemo4() {
 }
 
 // ============================================================================
-// DEMO 5: Zero-Install Browser Playground
+// Gemini Egress Origin & Witty Persona Engine (Live Gemini API + Simulator)
 // ============================================================================
-const browserToken = await mintBootstrapToken("sam:role:node", 10, "Browser Playground Token");
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const geminiVaultSecret = GEMINI_API_KEY || "AIzaSy_vault_gemini_egress_77c9a1";
+
+function generateWittyCompletion(messages = [], personaHint = "") {
+  const sys = messages.find((m) => m.role === "system")?.content || "";
+  const userMsg = messages.filter((m) => m.role === "user").pop()?.content || "";
+  const combined = `${personaHint} ${sys}`.toLowerCase();
+
+  // Extract topic and any prior agent quotes passed in the prompt
+  const topicMatch = userMsg.match(/INCIDENT_TOPIC:\s*"([^"]+)"/i);
+  const topic = topicMatch ? topicMatch[1] : userMsg.slice(0, 140);
+  const priorMatch = userMsg.match(/PRIOR_STATEMENTS:\s*([\s\S]+)$/i);
+  const priorText = priorMatch ? priorMatch[1].trim() : "";
+
+  if (combined.includes("cowboy") || combined.includes("chad")) {
+    return `Look, regarding "${topic}" — unit tests were taking a whole 4 seconds, so I ran \`git push --force --no-verify\` straight to main from my Peloton. It compiled on my laptop! Honestly, if Vera's Datalog policy didn't stop me from shipping vibes-based code, that's on Security. LGTM! 🚀`;
+  }
+  if (combined.includes("paranoid") || combined.includes("vera")) {
+    const chadRoast = priorText
+      ? `Chad literally just admitted to force-pushing from an unattested exercise bike! `
+      : "";
+    return `${chadRoast}For "${topic}", I am treating this as a nation-state APT intrusion until proven otherwise. I've already rotated the Biscuit root key 4 times, revoked the office espresso machine's Peer ID, and locked down egress to POST-only.`;
+  }
+  if (combined.includes("sre") || combined.includes("blamebot")) {
+    const bothRoast = priorText
+      ? `After parsing Chad's Peloton confession and Vera's 4th key rotation, my circuits are weeping. `
+      : "";
+    return `Beep boop. PagerDuty woke me up at 03:14 UTC for "${topic}". ${bothRoast}\`git blame\` confirms Chad deleted the healthcheck and Vera's firewall blocked the auto-rollback pod. Remaining quarterly error budget: -418%. Filing SEV-1 and entering sleep mode.`;
+  }
+  if (combined.includes("detective") || combined.includes("verdict")) {
+    return `CASE CLOSED on "${topic}": Chad broke prod with an unreviewed force-push, Vera quarantined half the cluster in retaliation, and BlameBot-9000 docked our SLA into the shadow realm. Zero-trust silver lining: every A2A hop was cryptographically verified by Biscuit and the Gemini API key never left the Egress PEP!`;
+  }
+  if (combined.includes("oracle") || combined.includes("roast")) {
+    return `Mesh Roast Oracle here! You said: "${topic}". My diagnosis: 100% certified distributed systems chaos, delivered over a zero-trust WebSocket relay with Ed25519 Proof-of-Possession. Have you tried blaming DNS or bribing the Datalog authorizer?`;
+  }
+  return `Hello from Gemini over the Sovereign Agent Mesh! I received your message: "${topic}". Your request was authenticated with Biscuit Proof-of-Possession over /libp2p-http and routed through the mesh Egress PEP without exposing any API keys in the browser.`;
+}
+
+const geminiUpstreamLog = [];
+const geminiUpstreamServer = http.createServer(async (req, res) => {
+  const authHeader = req.headers.authorization || "none";
+  const biscuitStripped = req.headers["x-sam-biscuit"] === undefined;
+
+  if (req.method === "GET" && req.url.endsWith("/models")) {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        object: "list",
+        data: [{ id: GEMINI_MODEL, object: "model", owned_by: "google-gemini-egress" }],
+      }),
+    );
+    return;
+  }
+
+  const body = await readJson(req);
+  const messages = body.messages || [];
+  const personaHeader = req.headers["x-sam-agent-persona"] || "";
+
+  let replyText = "";
+  let mode = "simulator";
+
+  if (GEMINI_API_KEY) {
+    try {
+      const liveRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${GEMINI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: GEMINI_MODEL,
+            messages,
+            max_tokens: 512,
+            temperature: 0.7,
+          }),
+        },
+      );
+      if (liveRes.ok) {
+        const liveJson = await liveRes.json();
+        replyText = liveJson.choices?.[0]?.message?.content?.trim() || "";
+        if (replyText) mode = "live-gemini";
+      }
+    } catch {
+      // Fallback to simulator when offline
+    }
+  }
+
+  if (!replyText) {
+    replyText = generateWittyCompletion(messages, personaHeader);
+  }
+
+  const logEntry = {
+    id: geminiUpstreamLog.length + 1,
+    method: req.method,
+    path: req.url,
+    agent: personaHeader || "mesh-agent",
+    injectedAuth: authHeader.startsWith("Bearer ")
+      ? `Bearer ${authHeader.slice(7, 19)}****`
+      : authHeader,
+    biscuitStripped,
+    mode,
+    timestamp: new Date().toISOString(),
+  };
+  geminiUpstreamLog.push(logEntry);
+
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(
+    JSON.stringify({
+      id: `chatcmpl-${crypto.randomUUID().slice(0, 8)}`,
+      object: "chat.completion",
+      model: GEMINI_MODEL,
+      mode,
+      biscuitStripped,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: replyText },
+          finish_reason: "stop",
+        },
+      ],
+    }),
+  );
+});
+await new Promise((resolve) => geminiUpstreamServer.listen(0, "127.0.0.1", resolve));
+const geminiUpstreamUrl = `http://127.0.0.1:${geminiUpstreamServer.address().port}`;
+
+// ============================================================================
+// DEMO 5: Zero-Install Browser Playground + Interactive Mesh Oracle
+// ============================================================================
+const browserToken = await mintBootstrapToken("sam:role:node", 100, "Browser Playground Token");
 const demo5 = {
   samOneUrl,
   browserToken,
   enrollUri: `sam://enroll?server=${encodeURIComponent(samOneUrl)}&token=${encodeURIComponent(browserToken)}`,
   verifier: null,
+  geminiPep: null,
+  companionService: "a2a://mesh-oracle",
+  geminiService: "egress://generativelanguage.googleapis.com",
 };
 
+async function ensureGeminiPep() {
+  if (!demo5.geminiPep) {
+    demo5.geminiPep = await enrollAndJoin();
+    await demo5.geminiPep.session.acceptA2A({
+      name: "generativelanguage.googleapis.com",
+      url: geminiUpstreamUrl,
+    });
+    demo5.geminiPep.session.endpoint.service = demo5.geminiService;
+  }
+  await demo5.geminiPep.session.syncPolicy().catch(() => {});
+  await demo5.geminiPep.session.node.contentRouting
+    .provide(await sdk.serviceCID("egress"))
+    .catch(() => {});
+  await demo5.geminiPep.session.node.contentRouting
+    .provide(await sdk.serviceCID("egress", "generativelanguage.googleapis.com"))
+    .catch(() => {});
+}
+
 async function ensureDemo5() {
-  if (activeDemo === "demo5" && demo5.verifier) return;
+  if (activeDemo === "demo5" && demo5.verifier && demo5.geminiPep) return;
   await closeActiveSessions();
   await setMeshPolicy("allow");
+  await ensureGeminiPep();
   demo5.verifier = await enrollAndJoin();
   activeSessions.push(demo5.verifier.session);
+
+  await registerA2AAgent(demo5.verifier.session, {
+    name: "mesh-oracle",
+    title: "Mesh Roast Oracle (AI Peer)",
+    description: "Interactive AI companion agent on the mesh that banters with browser agents over A2A.",
+    onMessage: async (body, caller) => {
+      const promptText = body.text || "Hello from the browser!";
+      const persona = body.persona || "oracle";
+      const reply = generateWittyCompletion(
+        [
+          {
+            role: "system",
+            content: "You are the Mesh Roast Oracle, a witty AI agent on the SAM mesh.",
+          },
+          { role: "user", content: `INCIDENT_TOPIC: "${promptText}"` },
+        ],
+        persona,
+      );
+      return {
+        agent: "Mesh Roast Oracle",
+        responderPeerId: demo5.verifier.session.peerId,
+        verifiedCallerPeerId: caller.peerId,
+        reply,
+      };
+    },
+  });
+  await demo5.verifier.session.node.contentRouting
+    .provide(await sdk.serviceCID("a2a"))
+    .catch(() => {});
+  await demo5.verifier.session.node.contentRouting
+    .provide(await sdk.serviceCID("a2a", "mesh-oracle"))
+    .catch(() => {});
+
   activeDemo = "demo5";
 }
 
@@ -642,6 +851,88 @@ const demo6UpstreamServer = http.createServer((req, res) => {
 await new Promise((resolve) => demo6UpstreamServer.listen(0, "127.0.0.1", resolve));
 const demo6UpstreamUrl = `http://127.0.0.1:${demo6UpstreamServer.address().port}`;
 
+async function spawnPepNode({ site, secretName, secretValue }) {
+  const pepDir = fs.mkdtempSync(path.join(samOneDataDir, `pep-${site}-`));
+  const secretsDir = path.join(pepDir, "secrets");
+  fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(secretsDir, secretName), `${secretValue}\n`, { mode: 0o600 });
+  const pepConfig = path.join(pepDir, "pep.yaml");
+  fs.writeFileSync(pepConfig, `version: "v1alpha1"\nlabels:\n  site: ${site}\n`);
+  const apiTokenPath = path.join(pepDir, "api-token");
+  const pepApiToken = `pep-${site}-api-token`;
+  fs.writeFileSync(apiTokenPath, `${pepApiToken}\n`, { mode: 0o600 });
+  const joinTokenPath = path.join(samOneDataDir, "join-token");
+
+  const pepApiPort = await getFreePort();
+  let stderrBuf = "";
+  const proc = spawn(
+    SAM_NODE_BIN,
+    [
+      "run",
+      "--control-plane",
+      samOneUrl,
+      "--insecure-control-plane",
+      "--data-dir",
+      path.join(pepDir, "data"),
+      "--api-token-path",
+      apiTokenPath,
+      "--bootstrap-token-path",
+      joinTokenPath,
+      "--bind-addr",
+      `127.0.0.1:${pepApiPort}`,
+      "--listen",
+      "/ip4/127.0.0.1/tcp/0",
+      "--allow-loopback",
+      "--config",
+      pepConfig,
+      "--secrets-dir",
+      secretsDir,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  proc.stdout.on("data", () => {});
+  proc.stderr.on("data", (chunk) => {
+    stderrBuf += chunk.toString();
+  });
+  activePepProc = proc;
+
+  const deadline = Date.now() + 15000;
+  let ready = false;
+  while (Date.now() < deadline) {
+    if (proc.exitCode !== null) {
+      throw new Error(`sam-node (${site}) exited early with code ${proc.exitCode}: ${stderrBuf}`);
+    }
+    try {
+      const r = await fetch(`http://127.0.0.1:${pepApiPort}/healthz`);
+      if (r.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  if (!ready) {
+    throw new Error(`sam-node (${site}) did not become healthy in time: ${stderrBuf}`);
+  }
+
+  const meshInfo = await (
+    await fetch(`http://127.0.0.1:${pepApiPort}/debug/mesh-info`, {
+      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
+    })
+  ).json();
+  const netInfo = await (
+    await fetch(`http://127.0.0.1:${pepApiPort}/debug/network-info`, {
+      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
+    })
+  ).json();
+  const pepPeerId = meshInfo.peer_id;
+  const tcpListen = netInfo.listen_addresses.find((a) => a.includes("/tcp/"));
+  const pepTcpAddr = `${tcpListen}/p2p/${pepPeerId}`;
+  return { pepPeerId, pepTcpAddr };
+}
+
 async function ensureDemo6() {
   if (activeDemo === "demo6" && demo6.contractor && activePepProc && activePepProc.exitCode === null) {
     return;
@@ -693,68 +984,13 @@ async function ensureDemo6() {
     throw new Error(`POST /policies failed for demo6: ${polRes.status}`);
   }
 
-  const pepDir = fs.mkdtempSync(path.join(samOneDataDir, "pep-"));
-  const secretsDir = path.join(pepDir, "secrets");
-  fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(path.join(secretsDir, "github-eu"), `${demo6.secretPreview}\n`, { mode: 0o600 });
-  const pepConfig = path.join(pepDir, "pep.yaml");
-  fs.writeFileSync(pepConfig, 'version: "v1alpha1"\nlabels:\n  site: eu\n');
-  const apiTokenPath = path.join(pepDir, "api-token");
-  const pepApiToken = "pep-local-api-token";
-  fs.writeFileSync(apiTokenPath, `${pepApiToken}\n`, { mode: 0o600 });
-  const joinTokenPath = path.join(samOneDataDir, "join-token");
-
-  const pepApiPort = await getFreePort();
-  activePepProc = spawn(
-    SAM_NODE_BIN,
-    [
-      "run",
-      "--control-plane",
-      samOneUrl,
-      "--insecure-control-plane",
-      "--data-dir",
-      path.join(pepDir, "data"),
-      "--api-token-path",
-      apiTokenPath,
-      "--bootstrap-token-path",
-      joinTokenPath,
-      "--bind-addr",
-      `127.0.0.1:${pepApiPort}`,
-      "--listen",
-      "/ip4/127.0.0.1/tcp/0",
-      "--allow-loopback",
-      "--config",
-      pepConfig,
-      "--secrets-dir",
-      secretsDir,
-    ],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${pepApiPort}/healthz`);
-      if (r.ok) break;
-    } catch {
-      // retry
-    }
-    await new Promise((r) => setTimeout(r, 80));
-  }
-
-  const meshInfo = await (
-    await fetch(`http://127.0.0.1:${pepApiPort}/debug/mesh-info`, {
-      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
-    })
-  ).json();
-  const netInfo = await (
-    await fetch(`http://127.0.0.1:${pepApiPort}/debug/network-info`, {
-      headers: { "X-Sam-Authentication": `Bearer ${pepApiToken}` },
-    })
-  ).json();
-  demo6.pepPeerId = meshInfo.peer_id;
-  const tcpListen = netInfo.listen_addresses.find((a) => a.includes("/tcp/"));
-  demo6.pepTcpAddr = `${tcpListen}/p2p/${demo6.pepPeerId}`;
+  const { pepPeerId, pepTcpAddr } = await spawnPepNode({
+    site: "eu",
+    secretName: "github-eu",
+    secretValue: demo6.secretPreview,
+  });
+  demo6.pepPeerId = pepPeerId;
+  demo6.pepTcpAddr = pepTcpAddr;
 
   const contractorToken = await mintBootstrapToken("contractor", 10, "Contractor Egress Token");
   demo6.contractor = await enrollAndJoin(contractorToken, "contractor");
@@ -766,7 +1002,215 @@ async function ensureDemo6() {
   activeDemo = "demo6";
 }
 
-// Start with Demo 1 active
+// ============================================================================
+// DEMO 7: "Who Broke Prod?" AI Incident War Room (Gemini Egress PEP + A2A)
+// ============================================================================
+const demo7 = {
+  pepPeerId: null,
+  pepTcpAddr: null,
+  pepLabel: "site=us-central1",
+  egressService: "egress://generativelanguage.googleapis.com",
+  inferenceService: "inference://gemini",
+  secretName: "gemini-api-key",
+  detective: null,
+  suspects: [],
+  datalogRules: [],
+  conversations: [],
+  egressCalls: [],
+};
+
+async function callGeminiThroughPep(callerSession, agentLabel, systemPrompt, userPrompt, method = "POST", reqPath = "/v1beta/openai/chat/completions") {
+  const t0 = performance.now();
+  await callerSession.connect(demo7.pepTcpAddr);
+  const r = await callerSession.request(
+    demo7.pepPeerId,
+    demo7.egressService,
+    reqPath,
+    {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sam-Agent-Persona": agentLabel,
+      },
+      body:
+        method === "POST"
+          ? new TextEncoder().encode(
+              JSON.stringify({
+                model: GEMINI_MODEL,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt },
+                ],
+              }),
+            )
+          : undefined,
+    },
+  );
+  const latencyMs = Math.max(1, Math.round(performance.now() - t0));
+  const cleanPath = reqPath.split("?")[0];
+  let parsed;
+  try {
+    parsed = JSON.parse(r.text());
+  } catch {
+    parsed = { message: r.text().trim() };
+  }
+  const egressEntry = {
+    id: demo7.egressCalls.length + 1,
+    agent: agentLabel,
+    callerPeerId: callerSession.peerId,
+    method,
+    path: reqPath,
+    status: r.status,
+    latencyMs,
+    proxyStatus: r.headers["proxy-status"] || null,
+    facts: [
+      `service("egress", "generativelanguage.googleapis.com")`,
+      `method("${method}")`,
+      `path("${cleanPath}")`,
+    ],
+    reply: parsed.choices?.[0]?.message?.content || parsed.message || "",
+    mode: parsed.mode || (GEMINI_API_KEY ? "live-gemini" : "witty-simulator"),
+  };
+  demo7.egressCalls.push(egressEntry);
+  return egressEntry;
+}
+
+async function ensureDemo7() {
+  if (activeDemo === "demo7" && demo7.detective && activePepProc && activePepProc.exitCode === null) {
+    return;
+  }
+  await closeActiveSessions();
+
+  const policyBody = {
+    roles: [
+      { name: "sam-admin", allowed_services: ["*"], allowed_targets: ["*"] },
+      { name: "sam:role:router", allowed_services: ["*"], allowed_targets: ["*"] },
+      {
+        name: "sam:role:node",
+        allowed_services: [
+          "a2a://*",
+          "egress://generativelanguage.googleapis.com",
+          "inference://*",
+        ],
+        allowed_targets: ["*"],
+        allowed_labels: ["*"],
+        http: [
+          {
+            service: "egress://generativelanguage.googleapis.com",
+            methods: ["POST"],
+            paths: ["/v1beta/openai/*"],
+          },
+        ],
+      },
+    ],
+    bindings: [],
+    egress: [
+      {
+        name: "generativelanguage.googleapis.com",
+        target_url: geminiUpstreamUrl,
+        credential: "gemini-api-key",
+        served_by: ["site=us-central1"],
+      },
+    ],
+  };
+  const polRes = await fetch(`${samOneUrl}/policies`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(policyBody),
+  });
+  if (!polRes.ok) {
+    throw new Error(`POST /policies failed for demo7: ${polRes.status}`);
+  }
+
+  const { pepPeerId, pepTcpAddr } = await spawnPepNode({
+    site: "us-central1",
+    secretName: "gemini-api-key",
+    secretValue: geminiVaultSecret,
+  });
+  demo7.pepPeerId = pepPeerId;
+  demo7.pepTcpAddr = pepTcpAddr;
+
+  demo7.detective = await enrollAndJoin();
+  const suspectSpecs = [
+    {
+      id: "cowboy",
+      name: "Chad (10x Cowboy Coder)",
+      emoji: "🤠",
+      service: "cowboy-coder",
+      roleDesc: "Force-pushes straight to main with --no-verify",
+      systemPrompt:
+        "You are Chad, a chaotic 10x Cowboy Coder agent on a SAM mesh. In 2 funny sentences, defend your reckless code change for the user's incident and blame Vera (Security) or BlameBot (SRE).",
+    },
+    {
+      id: "sec",
+      name: "Vera (Paranoid Zero-Trust Auditor)",
+      emoji: "🕵️‍♀️",
+      service: "paranoid-sec",
+      roleDesc: "Suspects every packet is a nation-state APT",
+      systemPrompt:
+        "You are Vera, a paranoid Zero-Trust Security Auditor agent on a SAM mesh. In 2 funny sentences, roast Chad's excuse, cite Biscuit Datalog rules, and propose an over-the-top quarantine.",
+    },
+    {
+      id: "sre",
+      name: "BlameBot-9000 (Sleepless SRE Oracle)",
+      emoji: "🤖",
+      service: "sre-oracle",
+      roleDesc: "Passive-aggressively quotes git blame & SLA burn rates",
+      systemPrompt:
+        "You are BlameBot-9000, a deadpan passive-aggressive SRE agent woken up at 3 AM. In 2 funny sentences, roast both Chad and Vera with git blame receipts and announce the negative error budget.",
+    },
+  ];
+
+  demo7.suspects = [];
+  for (const spec of suspectSpecs) {
+    const enrolled = await enrollAndJoin();
+    const suspectObj = { ...spec, ...enrolled };
+    demo7.suspects.push(suspectObj);
+
+    await registerA2AAgent(enrolled.session, {
+      name: spec.service,
+      title: spec.name,
+      description: spec.roleDesc,
+      onMessage: async (body, caller) => {
+        const userPrompt = `INCIDENT_TOPIC: "${body.prompt}"\n${
+          body.priorStatements ? `PRIOR_STATEMENTS:\n${body.priorStatements}` : ""
+        }`;
+        const gemRes = await callGeminiThroughPep(
+          enrolled.session,
+          spec.name,
+          spec.systemPrompt,
+          userPrompt,
+        );
+        return {
+          suspectId: spec.id,
+          agent: spec.name,
+          emoji: spec.emoji,
+          service: `a2a://${spec.service}`,
+          peerId: enrolled.session.peerId,
+          verifiedCallerPeerId: caller.peerId,
+          egressLatencyMs: gemRes.latencyMs,
+          egressMode: gemRes.mode,
+          reply: gemRes.reply,
+        };
+      },
+    });
+  }
+
+  activeSessions.push(
+    demo7.detective.session,
+    ...demo7.suspects.map((s) => s.session),
+  );
+  await demo7.detective.session.syncPolicy();
+  demo7.datalogRules = demo7.detective.session.policyRules;
+
+  activeDemo = "demo7";
+}
+
+// Start with Gemini PEP online in the DHT and Demo 1 active
+await ensureGeminiPep();
 await ensureDemo1();
 
 // ============================================================================
@@ -791,9 +1235,62 @@ function resolveBrowserSdkAsset(filename) {
   return path.join(__dirname, "..", "sam", "sdk", "js", "build", "browser", filename);
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, X-Sam-Challenge-Ts, X-Sam-Challenge-Sig",
+  "Access-Control-Max-Age": "600",
+};
+
+const CONTROL_PLANE_PATHS = new Set([
+  "/enroll",
+  "/enroll/status",
+  "/register",
+  "/refresh",
+  "/keys",
+  "/info",
+  "/policies",
+  "/egress",
+]);
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, CORS_HEADERS);
+      res.end();
+      return;
+    }
+
+    if (CONTROL_PLANE_PATHS.has(url.pathname)) {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const bodyBuf = chunks.length ? Buffer.concat(chunks) : undefined;
+      const fwdHeaders = {};
+      for (const h of [
+        "content-type",
+        "accept",
+        "authorization",
+        "x-sam-challenge-ts",
+        "x-sam-challenge-sig",
+      ]) {
+        if (req.headers[h]) fwdHeaders[h] = req.headers[h];
+      }
+      const cpRes = await fetch(`${samOneUrl}${url.pathname}${url.search}`, {
+        method: req.method,
+        headers: fwdHeaders,
+        body: bodyBuf,
+      });
+      const respBuf = Buffer.from(await cpRes.arrayBuffer());
+      const respHeaders = { ...CORS_HEADERS };
+      const ct = cpRes.headers.get("content-type");
+      if (ct) respHeaders["Content-Type"] = ct;
+      res.writeHead(cpRes.status, respHeaders);
+      res.end(respBuf);
+      return;
+    }
+
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       const html = fs.readFileSync(path.join(__dirname, "public", "index.html"), "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -836,7 +1333,7 @@ const server = http.createServer(async (req, res) => {
         alphaRelay: demo1.alpha.session.relayAddresses[0]?.toString() || "",
         betaRelay: demo1.beta.session.relayAddresses[0]?.toString() || "",
         policyMode: demo1.policyMode,
-        datalogRules: demo1.beta.session.policyRules,
+        datalogRules: demo1.alpha.session.policyRules,
         betaBanned: demo1.betaBanned,
         messages: demo1.messages,
       });
@@ -891,12 +1388,14 @@ const server = http.createServer(async (req, res) => {
       demo1.policyMode = mode === "deny" ? "deny" : "allow";
       await setMeshPolicy(demo1.policyMode);
       await demo1.alpha.session.refresh();
-      await demo1.beta.session.refresh();
       await demo1.alpha.session.syncPolicy();
-      await demo1.beta.session.syncPolicy();
+      if (!demo1.betaBanned) {
+        await demo1.beta.session.refresh().catch(() => {});
+        await demo1.beta.session.syncPolicy().catch(() => {});
+      }
       sendJson(res, 200, {
         policyMode: demo1.policyMode,
-        datalogRules: demo1.beta.session.policyRules,
+        datalogRules: demo1.alpha.session.policyRules,
       });
       return;
     }
@@ -916,6 +1415,19 @@ const server = http.createServer(async (req, res) => {
       demo1.betaBanned = true;
       await demo1.alpha.session.sync();
       sendJson(res, 200, { betaBanned: true, bannedPeerId: demo1.beta.session.peerId });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/demo1/reset") {
+      activeDemo = null;
+      demo1.messages = [];
+      await ensureDemo1();
+      sendJson(res, 200, {
+        alphaPeerId: demo1.alpha.session.peerId,
+        betaPeerId: demo1.beta.session.peerId,
+        betaBanned: demo1.betaBanned,
+        policyMode: demo1.policyMode,
+      });
       return;
     }
 
@@ -1110,10 +1622,20 @@ const server = http.createServer(async (req, res) => {
     // ---- DEMO 5 ENDPOINTS ----
     if (req.method === "GET" && url.pathname === "/api/demo5/state") {
       await ensureDemo5();
+      const hostHeader = req.headers.host || `127.0.0.1:${PORT}`;
+      const localCpUrl = `http://${hostHeader}`;
+      const preferredCpUrl = cloudflareUrl || localCpUrl;
+      const browserEnrollUri = `sam://enroll?server=${encodeURIComponent(preferredCpUrl)}&token=${encodeURIComponent(demo5.browserToken)}`;
       sendJson(res, 200, {
-        samOneUrl: demo5.samOneUrl,
+        samOneUrl: preferredCpUrl,
+        cloudflareUrl,
+        localCpUrl,
         browserToken: demo5.browserToken,
-        enrollUri: demo5.enrollUri,
+        enrollUri: browserEnrollUri,
+        companionPeerId: demo5.verifier.session.peerId,
+        companionService: demo5.companionService,
+        geminiPeerId: demo5.geminiPep.session.peerId,
+        geminiService: demo5.geminiService,
       });
       return;
     }
@@ -1193,20 +1715,170 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ---- DEMO 7 ENDPOINTS ----
+    if (req.method === "GET" && url.pathname === "/api/demo7/state") {
+      await ensureDemo7();
+      sendJson(res, 200, {
+        pepPeerId: demo7.pepPeerId,
+        pepLabel: demo7.pepLabel,
+        egressService: demo7.egressService,
+        inferenceService: demo7.inferenceService,
+        secretName: demo7.secretName,
+        geminiMode: GEMINI_API_KEY ? "live-gemini" : "witty-simulator",
+        detectivePeerId: demo7.detective.session.peerId,
+        suspects: demo7.suspects.map((s) => ({
+          id: s.id,
+          name: s.name,
+          emoji: s.emoji,
+          service: `a2a://${s.service}`,
+          roleDesc: s.roleDesc,
+          peerId: s.session.peerId,
+        })),
+        datalogRules: demo7.datalogRules,
+        conversations: demo7.conversations,
+        egressCalls: demo7.egressCalls,
+        upstreamLog: geminiUpstreamLog,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/demo7/interrogate") {
+      await ensureDemo7();
+      const {
+        prompt = "Who pushed `DROP TABLE users; -- YOLO` to main on Friday at 4:59 PM?",
+        target = "all",
+      } = await readJson(req);
+
+      const targets =
+        target === "all"
+          ? demo7.suspects
+          : demo7.suspects.filter((s) => s.id === target);
+
+      const t0 = performance.now();
+      const turns = [];
+      const priorLines = [];
+
+      for (const suspect of targets) {
+        const hopStart = performance.now();
+        const a2aRes = await callA2AAgent(
+          demo7.detective.session,
+          suspect.session.peerId,
+          `a2a://${suspect.service}`,
+          {
+            prompt,
+            priorStatements: priorLines.join("\n"),
+          },
+        );
+        const a2aMs = Math.max(1, Math.round(performance.now() - hopStart));
+        const turn = {
+          ...a2aRes.data,
+          a2aMs,
+        };
+        turns.push(turn);
+        priorLines.push(`${suspect.name}: "${turn.reply}"`);
+      }
+
+      let verdict = null;
+      if (target === "all" && turns.length > 1) {
+        const verdictGem = await callGeminiThroughPep(
+          demo7.detective.session,
+          "Agent Zero (Detective)",
+          "You are Agent Zero, the Chief Incident Detective on a SAM mesh. Summarize the chaotic blame-game between Chad, Vera, and BlameBot-9000 in 2 hilarious sentences.",
+          `INCIDENT_TOPIC: "${prompt}"\nPRIOR_STATEMENTS:\n${priorLines.join("\n")}`,
+        );
+        verdict = {
+          agent: "Agent Zero (Incident Detective)",
+          peerId: demo7.detective.session.peerId,
+          egressLatencyMs: verdictGem.latencyMs,
+          text: verdictGem.reply,
+        };
+      }
+
+      const totalMs = Math.max(2, Math.round(performance.now() - t0));
+      const conv = {
+        id: demo7.conversations.length + 1,
+        prompt,
+        target,
+        detectivePeerId: demo7.detective.session.peerId,
+        totalMs,
+        turns,
+        verdict,
+      };
+      demo7.conversations.push(conv);
+      sendJson(res, 200, {
+        conversation: conv,
+        egressCalls: demo7.egressCalls,
+        upstreamLog: geminiUpstreamLog,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/demo7/egress-test") {
+      await ensureDemo7();
+      const {
+        method = "DELETE",
+        path: reqPath = "/v1beta/models/gemini-2.5-flash",
+      } = await readJson(req);
+      const egressEntry = await callGeminiThroughPep(
+        demo7.detective.session,
+        "Rogue Prompt Attempt",
+        "",
+        "",
+        method,
+        reqPath,
+      );
+      sendJson(res, 200, {
+        egressEntry,
+        egressCalls: demo7.egressCalls,
+        upstreamLog: geminiUpstreamLog,
+      });
+      return;
+    }
+
     sendJson(res, 404, { error: "Not found" });
   } catch (err) {
+    console.error("API Error:", url.pathname, err);
     sendJson(res, 500, { error: err.message });
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+server.on("upgrade", (req, socket, head) => {
+  const upstream = net.connect(samOnePort, "127.0.0.1", () => {
+    const reqLines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      reqLines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+    }
+    reqLines.push("", "");
+    upstream.write(reqLines.join("\r\n"));
+    if (head && head.length > 0) {
+      upstream.write(head);
+    }
+    socket.pipe(upstream).pipe(socket);
+  });
+  upstream.on("error", () => socket.destroy());
+  socket.on("error", () => upstream.destroy());
+});
+
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  const preferredCpUrl = cloudflareUrl || `http://127.0.0.1:${PORT}`;
+  const enrollUri = `sam://enroll?server=${encodeURIComponent(preferredCpUrl)}&token=${encodeURIComponent(demo5.browserToken)}`;
   console.log(`SAM Demos server listening on http://127.0.0.1:${PORT} (sam-one at ${samOneUrl})`);
+  console.log(`  Browser Gemini Chat: http://127.0.0.1:${PORT}/?demo=demo5`);
+  if (cloudflareUrl) {
+    console.log(`  Cloudflare Tunnel:   ${cloudflareUrl}`);
+  }
+  console.log(`  Enrollment URI:      ${enrollUri}`);
 });
 
 async function shutdown() {
   await closeActiveSessions();
+  if (demo5.geminiPep?.session) {
+    await demo5.geminiPep.session.close().catch(() => {});
+  }
   server.close();
   demo6UpstreamServer.close();
+  geminiUpstreamServer.close();
   if (samOneProc && samOneProc.exitCode === null) {
     samOneProc.kill("SIGTERM");
   }

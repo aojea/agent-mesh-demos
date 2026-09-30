@@ -127,7 +127,7 @@ try {
 
   // 1. Zero-Trust Two-Agent Playground
   await recordScenario(browser, "demo-two-agent-playground", async (page) => {
-    await page.goto(DEMO_URL);
+    await page.goto(`${DEMO_URL}/?demo=demo1&single=1`);
     await pause(1000);
 
     // Alpha sends A2A task to Beta -> 200 OK
@@ -166,8 +166,7 @@ try {
 
   // 2. Polyglot "Follow the Packet" Hop Tracer
   await recordScenario(browser, "demo-polyglot-hop-tracer", async (page) => {
-    await page.goto(DEMO_URL);
-    await page.click("#tab-demo2");
+    await page.goto(`${DEMO_URL}/?demo=demo2&single=1`);
     await pause(1000);
 
     await page.click("#d2-run-trace");
@@ -181,8 +180,7 @@ try {
 
   // 3. "Scan-to-Join" Multi-Agent Collaboration Room
   await recordScenario(browser, "demo-qr-multi-agent-room", async (page) => {
-    await page.goto(DEMO_URL);
-    await page.click("#tab-demo3");
+    await page.goto(`${DEMO_URL}/?demo=demo3&single=1`);
     await pause(1000);
 
     await page.click("#d3-join-1");
@@ -205,8 +203,7 @@ try {
 
   // 4. Federated Specialist Swarm
   await recordScenario(browser, "demo-federated-inference-swarm", async (page) => {
-    await page.goto(DEMO_URL);
-    await page.click("#tab-demo4");
+    await page.goto(`${DEMO_URL}/?demo=demo4&single=1`);
     await pause(1000);
 
     await page.click("#d4-fanout-btn");
@@ -218,15 +215,22 @@ try {
     await pause(1800);
   });
 
-  // 5. Zero-Install Browser Playground
+  // 5. Browser Gemini Chat
   await recordScenario(browser, "demo-browser-playground", async (page) => {
-    await page.goto(DEMO_URL);
-    await page.click("#tab-demo5");
+    await page.goto(`${DEMO_URL}/?demo=demo5&single=1`);
     await pause(1000);
 
     await page.click("#d5-parse-btn");
     await pause(600);
     await page.click("#d5-join-btn");
+    await pause(2000);
+
+    await page.click("#d5-banter-btn");
+    await pause(2000);
+
+    await page.fill("#d5-chat-input", "How does the Egress PEP protect the Gemini API key?");
+    await pause(500);
+    await page.click("#d5-banter-btn");
     await pause(2000);
 
     await page.click("#d5-leave-btn");
@@ -235,8 +239,7 @@ try {
 
   // 6. Egress PEP & HTTP Grants
   await recordScenario(browser, "demo-egress-pep", async (page) => {
-    await page.goto(DEMO_URL);
-    await page.click("#tab-demo6");
+    await page.goto(`${DEMO_URL}/?demo=demo6&single=1`);
     await pause(1500);
 
     await page.click("#d6-btn-allow");
@@ -246,6 +249,18 @@ try {
     await pause(1400);
 
     await page.click("#d6-btn-deny-path");
+    await pause(1600);
+  });
+
+  // 7. "Who Broke Prod?" AI Incident War Room (Gemini Egress PEP + A2A)
+  await recordScenario(browser, "demo-ai-incident-war-room", async (page) => {
+    await page.goto(`${DEMO_URL}/?demo=demo7&single=1`);
+    await pause(1800);
+
+    await page.click("#d7-interrogate-all-btn");
+    await pause(2000);
+
+    await page.click("#d7-test-deny-btn");
     await pause(1600);
   });
 
